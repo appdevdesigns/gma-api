@@ -29,7 +29,7 @@ var $ajax = function (args) {
         followRedirect: false,
         jar: true
     }, function (err, res, body) {
-        //console.log(err, body);
+        //console.log(err, res, body);
         // Deliver results in a similar format as jQuery.ajax()
         var xhr = {
             responseText: body,
@@ -47,6 +47,8 @@ var $ajax = function (args) {
         };
         if (err) {
             dfd.reject(xhr, "error", err);
+        } else if (res.statusCode >= 400) {
+            dfd.reject(xhr, "error");
         } else {
             var data = body;
             try {

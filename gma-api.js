@@ -168,16 +168,21 @@ GMA.prototype.login = function (username, password) {
         function(next){
             $ajax({
                 url: self.opts.casURL + "/v1/tickets",
-                type: "post",
+                type: "POST",
                 cache: false,
                 data: { username: username, password: password }
             })
             .then(function(data, textStatus, res){
                 tgt = res.getResponseHeader('Location');
-                next();
+                if (tgt) {
+                    next();
+                } else {
+                    console.log(data, textStatus, res);
+                    next(new Error('Credentials were not accepted'));
+                }
             })
             .fail(function(res, textStatus, err){
-                console.log(res, err);
+                //console.log(res, err);
                 if (err instanceof Error) {
                     if (!err.message) {
                         err.message = "[" + textStatus + ": " + res.status + "]";
