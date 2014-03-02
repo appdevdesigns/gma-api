@@ -145,9 +145,9 @@ GMA.prototype.login = function (username, password) {
     var st;
     var dfd = $.Deferred();
     var self = this;
-    var gmaHome = self.opts.gmaBase + '?q=node';
+    //var gmaHome = self.opts.gmaBase + '?q=node';
     //var gmaHome = self.opts.gmaBase + 'index.php?q=en/node';
-    //var gmaHome = self.opts.gmaBase + '?q=node&destination=node';
+    var gmaHome = self.opts.gmaBase + '?q=en/node&destination=node';
     //var gmaHome = self.opts.gmaBase + '?q=gmaservices&destination=gmaservices';
 
     self.opts.showBusyAnim();
@@ -210,9 +210,7 @@ GMA.prototype.login = function (username, password) {
             $ajax({
                 url: tgt,
                 type: "POST",
-                //data: { service: gmaHome }
-                data: "service=" + gmaHome,
-                processData: false
+                data: { service: gmaHome }
             })
             .then(function(data, textStatus, res){
                 // Credentials verified by CAS server. We now have the
