@@ -229,11 +229,14 @@ GMA.prototype.login = function (username, password) {
             var finalURL = gmaHome +
                 (gmaHome.match(/[?]/) ? "&" : '?') +
                 "ticket=" + st;
+console.log('finalURL:'+finalURL);
             $ajax({
                 url: finalURL,
                 type: "GET"
             })
             .then(function(data, textStatus, res){
+console.log(data);
+console.log(res);
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
@@ -543,12 +546,21 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         }
     })
     .then(function(data, textStatus, res){
+//console.log('request completed:');
+//console.log(data);
+//console.log(res);
+
         if (data.success) {
+//console.log('data.successful ...');
 
             if (!data.data.staffReports) {
+//console.log('   don\'t think there are any reports ...');
+
                 dfd.reject(new Error("No reports available"));
             }
             else {
+//console.log('   compiling reports ...');
+
                 var reports = [];
                 for (var i=0; i<data.data.staffReports.length; i++) {
                     var reportId = data.data.staffReports[i].staffReportId;
@@ -573,6 +585,12 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         }
     })
     .fail(function(res, textStatus, err){
+
+//        console.log(' shoot! error getting reports...');
+//        //console.log(res.allHeaders());
+//        console.log(res);
+//        console.log(err);
+
         dfd.reject(err);
     });
 
@@ -640,7 +658,10 @@ Assignment.prototype.getMeasurements = function () {
         dfd.reject(err);
     })
     .then(function(listReports) {
-        if (listReports.length > 0) {
+//console.log('got this for listReports:');
+//console.log(listReports);
+
+        if (listReports.length == 0) {
             console.warn('  --- Assignment.getMeasurements():  no reports returned ... ');
             // no measurements for this assignment...
             dfd.resolve([]);
@@ -649,7 +670,7 @@ Assignment.prototype.getMeasurements = function () {
 //console.log('Assignment.getMeasurements():  '+ listReports.length +' reports returned ... ');
 //console.log(listReports[0]);
 
-            listReports[0].measurement()
+            listReports[0].measurements()
             .fail(function(err){
                 console.error('  *** Assignment.getMeasurements(): report.measurement()  had and error:');
                 console.log(err);
@@ -659,7 +680,21 @@ Assignment.prototype.getMeasurements = function () {
 //console.log();
 //console.log('Assignment.getMeasurements(): report.measurement()  returned these measurements:');
 //console.log(list);
-                dfd.resolve(list);
+		// list = {
+        //    'strategyName':[ measurements ],
+        //    'strategyName2':[ measuremenList2 ],
+        //      ...
+        //  }
+                // Assumption: We will automatically choose the 1st strategy since
+                // in our ministry context it makes since for ren to report on a node
+                // with only 1 strategy:
+                for (var strategy in list) {
+                    dfd.resolve(list[strategy]);
+                    return;
+                }
+
+                // if I get here, I didn't get any results ...
+                dfd.resolve([]); // return no measurements
             });
         }
     });
@@ -738,6 +773,7 @@ Report.prototype.measurements = function () {
                         results[strategyName].push(
                             new Measurement({
                                 gma: self.gma,
+                                report:self,
                                 reportId: self.reportId,
                                 measurementId: info.measurementId,
                                 measurementName: info.measurementName,
@@ -785,6 +821,54 @@ Report.prototype.period = function () {
 
 
 
+/**
+ * @function reportForDate
+ *
+ * return a report object from the same Assignment (node) that is valid for the provided date.
+ *
+ * @param string ymd
+ * @return jQuery Deferred
+ */
+Report.prototype.reportForDate = function (ymd) {
+    var dfd = $.Deferred();
+
+    var servicePath = '?q=gmaservices/gma_staffReport';
+
+    var date = Report.formatDate(ymd);
+
+    self.request({
+        path: servicePath,
+        method: 'GET',
+        data: {
+            nodeId: this.nodeId,
+            dateWithin: date
+        }
+    })
+    .then(function(data, textStatus, res){
+       if (data.success) {
+            var report = data.data.staffReport[0];
+///// LEFT OFF HERE!!!!
+// figure out the rest of the report creation step
+
+            dfd.resolve({});
+        }
+        else {
+            var err = new Error(data.error.errorMessage);
+            err.origin = servicePath;
+            dfd.reject(err);
+        }
+    })
+    .fail(function(res, textStatus, err){
+        dfd.reject(err);
+    });
+
+
+    return dfd;
+
+};
+
+
+
 /************************************************************************/
 /**
  * @class Measurement
@@ -794,7 +878,10 @@ Report.prototype.period = function () {
 
 var Measurement = function (data) {
     this.gma = data.gma;
+    this.report = data.report;
+
     delete data.gma;
+    delete data.report;
 
     var defaults = {
         reportId: 0,

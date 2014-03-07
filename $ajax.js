@@ -1,6 +1,6 @@
 /**
  * $ajax simulates some behaviour of jQuery.ajax() as used by the GMA API.
- * 
+ *
  */
 
 var request = require('request');
@@ -8,7 +8,7 @@ var $ = require('node-jquery');
 
 var $ajax = function (args) {
     var dfd = $.Deferred();
-    
+
     // Map jQuery.ajax() args into request() equivalents
     var method = args.method || args.type;
     var body, qs, form;
@@ -29,6 +29,13 @@ var $ajax = function (args) {
         followRedirect: false,
         jar: true
     }, function (err, res, body) {
+
+
+        if (typeof res == 'undefined'){
+            console.log('*** error: gma-api.$ajax.request() did not receive an res object');
+            console.log('*** perhaps your connection failed');
+            res = {statusCode:'??', headers:{ not:'given' }};
+        }
         //console.log(err, res, body);
         // Deliver results in a similar format as jQuery.ajax()
         var xhr = {
@@ -65,7 +72,7 @@ var $ajax = function (args) {
             }
         }
     });
-    
+
     return dfd;
 }
 
