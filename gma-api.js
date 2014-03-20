@@ -22,7 +22,14 @@ var GMA = function (opts) {
     this.renId = null;
     this.GUID = null;
     this.isLoading = 0;
+    this.jar = false;
+
+    // on node, we need to track our own cookie jar:
+    if (typeof module != 'undefined' && module.exports) {
+        this.jar = require('request').jar();
+    }
 };
+
 
 
 if (typeof module != 'undefined' && module.exports) {
@@ -36,7 +43,6 @@ if (typeof module != 'undefined' && module.exports) {
     window.GMA = GMA;
     $ajax = $.ajax;
 }
-
 
 
 
@@ -63,16 +69,24 @@ GMA.prototype.request = function (opts) {
     };
 
 
+    var reqParams = {
+            url: self.opts.gmaBase + opts.path,
+            type: opts.method,
+            data: (typeof opts.data != 'undefined') ?
+                    JSON.stringify(opts.data) : opts.data,
+            dataType: opts.dataType || 'json',
+            contentType: 'application/json',
+            cache: false
+        };
 
-    $ajax({
-        url: self.opts.gmaBase + opts.path,
-        type: opts.method,
-        data: (typeof opts.data != 'undefined') ?
-                JSON.stringify(opts.data) : opts.data,
-        dataType: opts.dataType || 'json',
-        contentType: 'application/json',
-        cache: false
-    })
+    // pass in our local cookie jar if it exists
+    if (this.jar) {
+        reqParams.jar = this.jar;
+    }
+
+//console.log(reqParams);
+
+    $ajax(reqParams)
     .always(function(){
         if (!opts.noAnimation) {
             self.isLoading -= 1;
@@ -82,6 +96,7 @@ GMA.prototype.request = function (opts) {
         }
     })
     .fail(function(res, status, err){
+
         if (isParseError(err)) {
             // JSON parse error usually means the session timed out and
             // the Drupal site has redirected to the CAS login page
@@ -129,6 +144,7 @@ GMA.clearCookies = function () {
 };
 
 
+
 /**
  * @function login
  *
@@ -166,12 +182,16 @@ GMA.prototype.login = function (username, password) {
         },
         // Step 1: Get the TGT
         function(next){
-            $ajax({
+
+            var reqParams = {
                 url: self.opts.casURL + "/v1/tickets",
                 type: "POST",
                 cache: false,
                 data: { username: username, password: password }
-            })
+            };
+            if (self.jar) reqParams.jar = self.jar;
+
+            $ajax(reqParams)
             .then(function(data, textStatus, res){
                 tgt = res.getResponseHeader('Location');
                 if (tgt) {
@@ -207,11 +227,14 @@ GMA.prototype.login = function (username, password) {
         },
         // Step 2: Get the ST
         function(next){
-            $ajax({
+            var reqParams = {
                 url: tgt,
                 type: "POST",
                 data: { service: gmaHome }
-            })
+            };
+            if (self.jar) reqParams.jar = self.jar;
+
+            $ajax(reqParams)
             .then(function(data, textStatus, res){
                 // Credentials verified by CAS server. We now have the
                 // service ticket.
@@ -227,14 +250,15 @@ GMA.prototype.login = function (username, password) {
             var finalURL = gmaHome +
                 (gmaHome.match(/[?]/) ? "&" : '?') +
                 "ticket=" + st;
-console.log('finalURL:'+finalURL);
-            $ajax({
+
+            var reqParams = {
                 url: finalURL,
                 type: "GET"
-            })
+            };
+            if (self.jar) reqParams.jar = self.jar;
+
+            $ajax(reqParams)
             .then(function(data, textStatus, res){
-console.log(data);
-console.log(res);
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
@@ -461,15 +485,17 @@ GMA.prototype.getUser = function () {
 };
 
 
+
 /**
  * @function getAssignments
  *
  * Delivers the GMA nodes that the user is assigned to.
  *
  * @return jQuery Deferred
- *      resolves with two parameters
+ *      resolves with three parameters
  *      - assignmentsByID { 101: "Assign1", 120: "Assign2", ... }
  *      - assignmentsByName { "Assign1": 101, "Assign2": 120, ... }
+ *      - listAssignments [ { AssignmentObj1 }, { AssignmentObj2 }, ... ]
  */
 GMA.prototype.getAssignments = function () {
     var dfd = $.Deferred();
@@ -527,12 +553,14 @@ GMA.prototype.getAssignments = function () {
  *
  * @param int nodeId
  * @return jQuery Deferred
+ *      resolves with :
+ *      - []  if no report found
+ *      - [ {ReportObj1}, {ReportObj2}, ... ]
  */
 GMA.prototype.getReportsForNode = function (nodeId) {
     var dfd = $.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
-
 //console.log('   getReportsForNode():  nodeId['+nodeId+']');
     self.request({
         path: servicePath,
@@ -544,8 +572,9 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         }
     })
     .then(function(data, textStatus, res){
-//console.log('request completed:');
+//console.log('request completed for nodeId['+nodeId+']:');
 //console.log(data);
+//console.log(data.data.staffReports);
 //console.log(res);
 
         if (data.success) {
@@ -554,23 +583,33 @@ GMA.prototype.getReportsForNode = function (nodeId) {
             if (!data.data.staffReports) {
 //console.log('   don\'t think there are any reports ...');
 
-                dfd.reject(new Error("No reports available"));
+                // so return an empty array:
+                dfd.resolve([]);
             }
             else {
 //console.log('   compiling reports ...');
 
                 var reports = [];
                 for (var i=0; i<data.data.staffReports.length; i++) {
-                    var reportId = data.data.staffReports[i].staffReportId;
-                    var nodeName = data.data.staffReports[i].node.shortName;
-                    reports.push(new Report({
-                        gma: self,
-                        reportId: reportId,
-                        nodeId: nodeId,
-                        nodeName: nodeName,
-                        startDate: data.data.staffReports[i].startDate,
-                        endDate: data.data.staffReports[i].endDate
-                    }));
+
+                    // NOTE: it's possible the web service wont actually filter
+                    // based on the given nodeId (I've seen it), so we need to
+                    // verify which reports belong to this nodeId:
+
+                    // if this report belongs to this nodeId
+                    if (nodeId == data.data.staffReports[i].node.nodeId) {
+
+                        var reportId = data.data.staffReports[i].staffReportId;
+                        var nodeName = data.data.staffReports[i].node.shortName;
+                        reports.push(new Report({
+                            gma: self,
+                            reportId: reportId,
+                            nodeId: data.data.staffReports[i].node.nodeId,
+                            nodeName: nodeName,
+                            startDate: data.data.staffReports[i].startDate,
+                            endDate: data.data.staffReports[i].endDate
+                        }));
+                    }
                 }
                 dfd.resolve(reports);
             }
@@ -584,10 +623,10 @@ GMA.prototype.getReportsForNode = function (nodeId) {
     })
     .fail(function(res, textStatus, err){
 
-//        console.log(' shoot! error getting reports...');
-//        //console.log(res.allHeaders());
-//        console.log(res);
-//        console.log(err);
+//console.log(' shoot! error getting reports...');
+//console.log(res.getAllHeaders());
+//console.log(res);
+//console.log(err);
 
         dfd.reject(err);
     });
@@ -644,11 +683,21 @@ var Assignment = function(data) {
 
 
 
+/**
+ * @function getMeasurements
+ *
+ * lookup a list of Measurements associated with this Assignment.
+ *
+ * @return jQuery Deferred
+ *      resolves with
+ *      - []  if no Measurements found
+ *      - [{MeasurementObj1}, {MeasurementObj2}, ... ]
+ */
 Assignment.prototype.getMeasurements = function () {
     var dfd = $.Deferred();
-    var self = this;
+//    var self = this;
 //console.log('------------');
-//console.log('Assignment.getMeasurements():');
+//console.log('Assignment.getMeasurements('+this.nodeId+'):');
 
     this.gma.getReportsForNode(this.nodeId)
     .fail(function(err){
@@ -718,7 +767,23 @@ var Report = function(data) {
     this.startDate = data.startDate;
     this.endDate = data.endDate;
 
+    this._measurements = null;
+
 };
+
+
+
+/**
+ * @function id
+ *
+ * return the unique id for this Report
+ *
+ * @return int reportId
+ */
+Report.prototype.id = function () {
+    return this.reportId;
+};
+
 
 
 /**
@@ -758,27 +823,40 @@ Report.prototype.measurements = function () {
             var results = {};
 
             var numerics = data.data.numericMeasurements;
+
             // 1st layer is an array of objects
             for (var i=0; i<numerics.length; i++) {
+
                 var strategy = numerics[i];
+
                 // 2nd layer is an object with a single property
                 for (var strategyName in strategy) {
+
                     var measurements = strategy[strategyName];
                     results[strategyName] = [];
+
                     // 3rd layer is an array of objects
                     for (var j=0; j<measurements.length; j++) {
+
                         var info = measurements[j];
-                        results[strategyName].push(
-                            new Measurement({
-                                gma: self.gma,
-                                report:self,
-                                reportId: self.reportId,
-                                measurementId: info.measurementId,
-                                measurementName: info.measurementName,
-                                measurementDescription: info.measurementDescription,
-                                measurementValue: info.measurementValue
-                            })
-                        );
+                        var newMeasurement = new Measurement({
+                            gma: self.gma,
+                            report:self,
+                            reportId: self.reportId,
+                            measurementId: info.measurementId,
+                            measurementName: info.measurementName,
+                            measurementDescription: info.measurementDescription,
+                            measurementValue: info.measurementValue
+                        });
+
+                        // record this in our results
+                        results[strategyName].push(newMeasurement);
+
+                        // keep track of the measurements for this report
+                        //// NOTE: this is a single list of ALL measurements across strategies.
+                        ////       is this going to be safe for saving() the report?
+                        if (self._measurements == null) self._measurements = {};
+                        self._measurements[newMeasurement.id()] = newMeasurement;
                     }
                 }
             }
@@ -798,6 +876,16 @@ Report.prototype.measurements = function () {
     return dfd;
 };
 
+
+
+/**
+ * @function formatDate
+ *
+ * return a more readable date string than what is provided from GMA.
+ *
+ * @param string ymd  the GMA date string
+ * @return string
+ */
 Report.formatDate = function (ymd) {
     return ymd.substr(0, 4) + '-'
          + ymd.substr(4, 2) + '-'
@@ -805,6 +893,15 @@ Report.formatDate = function (ymd) {
 };
 
 
+
+/**
+ * @function period
+ *
+ * return a formatted string representing the "start date - end date" for this
+ * report.
+ *
+ * @return string
+ */
 Report.prototype.period = function () {
     /*
     var dfd = $.Deferred();
@@ -826,38 +923,63 @@ Report.prototype.period = function () {
  *
  * @param string ymd
  * @return jQuery Deferred
+ *      resolves with
+ *      - null if no matching report
+ *      - { ReportObj }
  */
 Report.prototype.reportForDate = function (ymd) {
     var dfd = $.Deferred();
+    var self = this;
 
-    var servicePath = '?q=gmaservices/gma_staffReport';
+//console.log('    . reportForDate():');
+    // Lets make sure ymd is in format: YYYYMMDD
+    // it could be :  "2014-03-11T05:00:00.000Z"
+    var parts = ymd.split('T');
+    var date = parts[0].replace('-','').replace('-','');
 
-    var date = Report.formatDate(ymd);
-
-    self.request({
+    var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
+    this.gma.request({
         path: servicePath,
-        method: 'GET',
+        method: 'POST',
         data: {
-            nodeId: this.nodeId,
+            nodeId: [ this.nodeId ],
             dateWithin: date
         }
     })
+    .fail(function(res, textStatus, err){
+        dfd.reject(err);
+    })
     .then(function(data, textStatus, res){
-       if (data.success) {
-            var report = data.data.staffReport[0];
-///// LEFT OFF HERE!!!!
-// figure out the rest of the report creation step
+//console.log('    . .then() returned:');
+//console.log();
+//console.log(data);
+//console.log();
+        if (data.success) {
 
-            dfd.resolve({});
+            var report = null;
+
+            if (data.data.totalCount > 0) {
+                var reportData = data.data.staffReports[0];
+//console.log('report :');
+//console.log(reportData);
+
+                report = new Report({
+                    gma: self.gma,
+                    reportId: reportData.staffReportId,
+                    nodeId: reportData.node.nodeId,
+                    nodeName: reportData.node.shortName,
+                    startDate: reportData.startDate,
+                    endDate: reportData.endDate
+                });
+            }
+
+            dfd.resolve(report);
         }
         else {
             var err = new Error(data.error.errorMessage);
             err.origin = servicePath;
             dfd.reject(err);
         }
-    })
-    .fail(function(res, textStatus, err){
-        dfd.reject(err);
     });
 
 
@@ -867,16 +989,91 @@ Report.prototype.reportForDate = function (ymd) {
 
 
 
+/**
+ * @function save
+ *
+ * cause this report to save any of it's measurement values that have changed.
+ *
+ * @return jQuery Deferred
+ */
+Report.prototype.save = function () {
+    var dfd = $.Deferred();
+
+    var self = this;
+    var servicePath = '?q=gmaservices/gma_staffReport/'+ self.reportId;
+//console.log('   servicePath:'+servicePath);
+
+    var listMeasurements = [];
+
+    // for each of our Measurements:
+    for (var id in this._measurements) {
+        var current = this._measurements[id];
+
+        // if it has changed then include it in the update:
+        if (current.hasChanged() ) {
+            listMeasurements.push(current.getSaveData());
+        }
+    }
+
+    // there are measurements to update
+    if (listMeasurements.length > 0) {
+
+        self.gma.request({
+            noAnimation: true,
+            path: servicePath,
+            method: 'PUT',
+            data: listMeasurements
+        })
+        .fail(function(res, status, err) {
+            dfd.reject(err);
+        })
+        .then(function(data, status, res) {
+//console.log();
+//console.log(' report.save().then():');
+
+            if (data.success) {
+
+//console.log('data:');
+//console.log(data);
+//console.log('res:');
+//console.log(res);
+
+                // now update these measurements to know they've been
+                // saved.  Halleluia!
+                listMeasurements.forEach(function(measurement){
+                    measurement.saved();
+                });
+
+                dfd.resolve();
+            } else {
+                var err = new Error(data.error.errorMessage);
+                err.origin = "PUT " + servicePath;
+                dfd.reject(err);
+            }
+        });
+    } else {
+
+        // nothing to update, so assume all good!
+        dfd.resolve();
+    }
+
+    return dfd;
+};
+
+
+
+
+
 /************************************************************************/
 /**
  * @class Measurement
  *
  * A measurement is unique to a particular report.
  */
-
 var Measurement = function (data) {
     this.gma = data.gma;
     this.report = data.report;
+    this.isDirty = false;  // flag to determine if Measurement needs saving().
 
     delete data.gma;
     delete data.report;
@@ -896,24 +1093,109 @@ var Measurement = function (data) {
 
 Measurement.timeout = 3000; // 3 seconds for delayed save operation
 
-Measurement.prototype.label = function () {
-    return this.data.measurementName;
+
+
+/**
+ * @function getReport
+ *
+ * Return the report this Measurement was pulled from.
+ *
+ * @return object
+ */
+Measurement.prototype.getReport = function() {
+    return this.report;
 };
 
+
+
+/**
+ * @function getSaveData
+ *
+ * Return an object describing how to update this measurement value
+ * according to the GMA api.
+ *
+ * @return object
+ */
+Measurement.prototype.getSaveData = function() {
+    return {
+                measurementId: this.data.measurementId,
+                type: 'numeric',
+                value: this.data.measurementValue
+            };
+};
+
+
+
+/**
+ * @function hasChanged
+ *
+ * has the value of this Measurement changed since it was loaded?
+ *
+ * @return bool
+ */
+Measurement.prototype.hasChanged = function () {
+    return this.isDirty;
+};
+
+
+
+/**
+ * @function id
+ *
+ * Return the Measurement's id value.
+ *
+ * @return int
+ */
 Measurement.prototype.id = function () {
     return this.data.measurementId;
 };
 
+
+
+/**
+ * @function label
+ *
+ * return the label for this measurement
+ *
+ * @return string
+ */
+Measurement.prototype.label = function () {
+    return this.data.measurementName;
+};
+
+
+
+/**
+ * @function value
+ *
+ * Return/set the value of this measurement.
+ *
+ * @codestart
+ * var currValue = measurement.val(); // get the value
+ * currValue++;
+ * measurement.val(currValue);        // set the value
+ * @codeend
+ *
+ * @param int val   the value to set.
+ * @return object
+ */
 Measurement.prototype.value = function (val) {
     if (typeof val != 'undefined') {
+        if (this.data.measurementValue != val)  this.isDirty = true;
         return this.data.measurementValue = val;
     }
     return this.data.measurementValue;
 };
 
+
+
 /**
+ * @function delayedSave
+ *
  * Wait a few seconds before saving the measurement value to the server.
  * Any new delayed save operations within that time will replace this one.
+ *
+ * @return jQuery Deferred
  */
 Measurement.prototype.delayedSave = function () {
     var self = this;
@@ -942,8 +1224,14 @@ Measurement.prototype.delayedSave = function () {
     return dfd;
 };
 
+
+
 /**
+ * @function save
+ *
  * Save the measurement's value to the server immediately.
+ *
+ * @return jQuery Deferred
  */
 Measurement.prototype.save = function () {
     var dfd = $.Deferred();
@@ -954,16 +1242,15 @@ Measurement.prototype.save = function () {
         noAnimation: true,
         path: servicePath,
         method: 'PUT',
-        data: [
-            {
-                measurementId: self.data.measurementId,
-                type: 'numeric',
-                value: self.data.measurementValue
-            }
-        ]
+        data: [  self.getSaveData() ]
     })
     .then(function(data, status, res) {
+
         if (data.success) {
+
+            // our data is current with GMA
+            self.isDirty = false;
+
             dfd.resolve();
         } else {
             var err = new Error(data.error.errorMessage);
@@ -976,5 +1263,18 @@ Measurement.prototype.save = function () {
     });
 
     return dfd;
+};
+
+
+
+/**
+ * @function saved
+ *
+ * If this measurement was saved externally (like Report.save()) this
+ * method lets the Measurement know that.
+ *
+ */
+Measurement.prototype.saved = function () {
+    this.isDirty = false;
 };
 
