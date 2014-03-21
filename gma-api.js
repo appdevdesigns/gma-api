@@ -23,6 +23,7 @@ var GMA = function (opts) {
     this.GUID = null;
     this.isLoading = 0;
     this.jar = false;
+    this.tokenCSRF = '';
 
     // on node, we need to track our own cookie jar:
     if (typeof module != 'undefined' && module.exports) {
@@ -76,7 +77,8 @@ GMA.prototype.request = function (opts) {
                     JSON.stringify(opts.data) : opts.data,
             dataType: opts.dataType || 'json',
             contentType: 'application/json',
-            cache: false
+            cache: false,
+            headers: { 'X-CSRF-Token': self.tokenCSRF }
         };
 
     // pass in our local cookie jar if it exists
@@ -273,7 +275,27 @@ GMA.prototype.login = function (username, password) {
                 next(err);
             });
         },
-        // Step 4: Get user info
+        // Step 4: Fetch the Drupal CSRF token
+        function(next){
+            var reqParams = {
+                url: self.opts.gmaBase + '?q=services/session/token',
+                type: "GET"
+            };
+            
+            $ajax(reqParams)
+            .done(function(data, textStatus, res){
+                self.tokenCSRF = data;
+                next();
+            })
+            .fail(function(res, textStatus, err){
+                console.log('Unable to get CSRF token');
+                console.log(err);
+                // Don't fail on this error in case we are on Drupal 6
+                // instead of Drupal 7.
+                next(); 
+            });
+        },
+        // Step 5: Get user info
         function(next){
             self.getUser()
             .then(function(){ next(); })
