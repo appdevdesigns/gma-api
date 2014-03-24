@@ -623,7 +623,7 @@ GMA.prototype.getReportsForNode = function (nodeId) {
 
                         var reportId = data.data.staffReports[i].staffReportId;
                         var nodeName = data.data.staffReports[i].node.shortName;
-                        reports.push(new Report({
+                        reports.unshift(new Report({
                             gma: self,
                             reportId: reportId,
                             nodeId: data.data.staffReports[i].node.nodeId,
