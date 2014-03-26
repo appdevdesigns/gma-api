@@ -63,7 +63,7 @@ GMA.prototype.request = function (opts) {
         if (!err || !err.message) {
             return false;
         }
-        if (err.message.match(/parse error|unexpected end of input/i)) {
+        if (err.message.match(/parse error|unexpected end of input|parse.+?unexpected/i)) {
             return true;
         }
         return false;
