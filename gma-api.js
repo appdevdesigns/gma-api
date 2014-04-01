@@ -703,14 +703,13 @@ Report.prototype.id = function () {
  *      ...
  * }
  *
- * @param string role (Optional) 'staff' or 'director'
  * @return jQuery Deferred
  */
-Report.prototype.measurements = function (role) {
-    role = role || 'staff';
+Report.prototype.measurements = function () {
     var dfd = $.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_[ROLE]Report/' + self.reportId + '/numeric';
+    var role = self.role;
 
     self.gma.request({
         role: role,
