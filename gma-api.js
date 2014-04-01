@@ -914,7 +914,7 @@ Report.prototype.save = function () {
     if (listMeasurements.length > 0) {
 
         self.gma.request({
-            role: role,
+            role: self.role,
             noAnimation: true,
             path: servicePath,
             method: 'PUT',
@@ -1129,7 +1129,7 @@ Measurement.prototype.save = function () {
     var servicePath = '?q=gmaservices/gma_[ROLE]Report/'+ self.data.reportId;
 
     self.gma.request({
-        role: self.role,
+        role: self.data.role,
         noAnimation: true,
         path: servicePath,
         method: 'PUT',
