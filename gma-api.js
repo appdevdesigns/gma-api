@@ -1062,8 +1062,11 @@ Report.prototype.save = function () {
 
                 // now update these measurements to know they've been
                 // saved.  Halleluia!
-                listMeasurements.forEach(function(measurement){
-                    measurement.saved();
+                listMeasurements.forEach(function(saveData){
+                    var measurement = self._measurements[saveData.measurementId];
+                    if (measurement) {
+                        measurement.saved();
+                    }
                 });
 
                 dfd.resolve();
