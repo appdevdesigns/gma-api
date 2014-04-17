@@ -37,6 +37,9 @@ var $ajax = function (args) {
         opts.form = args.data;
     }
 
+    if (args.headers) {
+        opts.headers = args.headers;
+    }
 
 // console.log(opts);
 
