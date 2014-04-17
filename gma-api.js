@@ -14,7 +14,8 @@ var GMA = function (opts) {
         casURL: 'https://signin.example.com/cas',
         showBusyAnim: function() {},
         hideBusyAnim: function() {},
-        reloginCallback: null
+        reloginCallback: null,
+        forwardedFor:false
     };
     this.opts = $.extend(defaults, opts);
 
@@ -80,6 +81,10 @@ GMA.prototype.request = function (opts) {
             cache: false,
             headers: { 'X-CSRF-Token': self.tokenCSRF }
         };
+
+    if (this.opts.forwardedFor) {
+        reqParams.headers['X-Forwarded-For'] = this.opts.forwardedFor;
+    }
 
     // pass in our local cookie jar if it exists
     if (this.jar) {
@@ -259,6 +264,10 @@ GMA.prototype.login = function (username, password) {
             };
             if (self.jar) reqParams.jar = self.jar;
 
+            if (self.opts.forwardedFor) {
+                reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
+            }
+
             $ajax(reqParams)
             .then(function(data, textStatus, res){
                 if (data.match(/CAS Authentication failed/)) {
@@ -281,7 +290,11 @@ GMA.prototype.login = function (username, password) {
                 url: self.opts.gmaBase + '?q=services/session/token',
                 type: "GET"
             };
-            
+
+            if (self.opts.forwardedFor) {
+                reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
+            }
+
             $ajax(reqParams)
             .done(function(data, textStatus, res){
                 self.tokenCSRF = data;
@@ -292,7 +305,7 @@ GMA.prototype.login = function (username, password) {
                 console.log(err);
                 // Don't fail on this error in case we are on Drupal 6
                 // instead of Drupal 7.
-                next(); 
+                next();
             });
         },
         // Step 5: Get user info
