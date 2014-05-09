@@ -4,9 +4,9 @@
   "description": "Client library for GMA web services",
   "main": "gma-api.js",
   "dependencies": {
-    "node-jquery": "0.1.x",
     "async": "0.2.x",
-    "request": "2.34.x"
+    "request": "2.34.x",
+    "ad-utils": "git://github.com/appdevdesigns/ad-utils"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

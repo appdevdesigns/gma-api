@@ -38,12 +38,23 @@ if (typeof module != 'undefined' && module.exports) {
     // Node.js
     module.exports = GMA;
     var async = require('async');
-    var $ = require('node-jquery');
-    var $ajax = require('./$ajax.js');
+//    var $ = require('node-jquery');
+//    var $ajax = require('./$ajax.js');
+    var AD = require('ad-utils');
 } else {
     // Browser / webview
     window.GMA = GMA;
-    $ajax = $.ajax;
+//    $ajax = $.ajax;
+
+
+    /////// Setup our Software Abstraction Layer (AD.sal)
+    /////// normally you would include the AD client library, but if not:
+    /////// make sure there is a web client jQuery version of AD.sal
+    if (typeof AD == 'undefined') AD = {};
+    if (typeof AD.sal == 'undefined') AD.sal = {};
+    if (typeof AD.sal.Deferred == 'undefined') AD.sal.Deferred = $.Deferred;
+    if (typeof AD.sal.http == 'undefined') AD.sal.http = $.ajax;
+
 }
 
 
@@ -58,7 +69,7 @@ GMA.prototype.request = function (opts) {
     }
 
     var self = this;
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
 
     var isParseError = function (err) {
         if (!err || !err.message) {
@@ -93,7 +104,8 @@ GMA.prototype.request = function (opts) {
 
 //console.log(reqParams);
 
-    $ajax(reqParams)
+   // $ajax(reqParams)
+    AD.sal.http(reqParams)
     .always(function(){
         if (!opts.noAnimation) {
             self.isLoading -= 1;
@@ -166,7 +178,7 @@ GMA.clearCookies = function () {
 GMA.prototype.login = function (username, password) {
     var tgt;
     var st;
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     //var gmaHome = self.opts.gmaBase + '?q=node';
     //var gmaHome = self.opts.gmaBase + 'index.php?q=en/node';
@@ -349,7 +361,7 @@ GMA.prototype.login = function (username, password) {
  * @return jQuery Deferred
  */
 GMA.prototype.loginDrupal = function (username, password) {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var canSkipLogin = false;
 
@@ -416,7 +428,7 @@ GMA.prototype.loginDrupal = function (username, password) {
                 $ajax({
                     url: self.opts.gmaBase+'?q=user/login',
                     type: "POST",
-                    data: loginData,
+                    data: loginData
 
                 })
 //                self.request({
@@ -490,7 +502,7 @@ GMA.prototype.loginDrupal = function (username, password) {
  *      }
  */
 GMA.prototype.getUser = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_user&type=current';
 
@@ -533,7 +545,7 @@ GMA.prototype.getUser = function () {
  *      - listAssignments [ { AssignmentObj1 }, { AssignmentObj2 }, ... ]
  */
 GMA.prototype.getAssignments = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_user/' + self.renId + '/assignments/staff';
 
@@ -593,7 +605,7 @@ GMA.prototype.getAssignments = function () {
  *      - [ {ReportObj1}, {ReportObj2}, ... ]
  */
 GMA.prototype.getReportsForNode = function (nodeId) {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
 //console.log('   getReportsForNode():  nodeId['+nodeId+']');
@@ -679,7 +691,7 @@ GMA.prototype.getReportsForNode = function (nodeId) {
  * @return jQuery Deferred
  */
 GMA.prototype.logout = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
 
     self.request({
@@ -729,7 +741,7 @@ var Assignment = function(data) {
  *      - [{MeasurementObj1}, {MeasurementObj2}, ... ]
  */
 Assignment.prototype.getMeasurements = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
 //    var self = this;
 //console.log('------------');
 //console.log('Assignment.getMeasurements('+this.nodeId+'):');
@@ -842,7 +854,7 @@ Report.prototype.id = function () {
  * @return jQuery Deferred
  */
 Report.prototype.measurements = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/' + self.reportId + '/numeric';
 
@@ -939,7 +951,7 @@ Report.formatDate = function (ymd) {
  */
 Report.prototype.period = function () {
     /*
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     dfd.resolve(this.startDate);
     return dfd;
     */
@@ -963,7 +975,7 @@ Report.prototype.period = function () {
  *      - { ReportObj }
  */
 Report.prototype.reportForDate = function (ymd) {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
 
 //console.log('    . reportForDate():');
@@ -1032,7 +1044,7 @@ Report.prototype.reportForDate = function (ymd) {
  * @return jQuery Deferred
  */
 Report.prototype.save = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
 
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/'+ self.reportId;
@@ -1237,7 +1249,7 @@ Measurement.prototype.value = function (val) {
  */
 Measurement.prototype.delayedSave = function () {
     var self = this;
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
 
     // Cancel any previous delayed save requests
     if (self.timer) {
@@ -1272,7 +1284,7 @@ Measurement.prototype.delayedSave = function () {
  * @return jQuery Deferred
  */
 Measurement.prototype.save = function () {
-    var dfd = $.Deferred();
+    var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/'+ self.data.reportId;
 
