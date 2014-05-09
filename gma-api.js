@@ -210,7 +210,7 @@ GMA.prototype.login = function (username, password) {
             };
             if (self.jar) reqParams.jar = self.jar;
 
-            $ajax(reqParams)
+            AD.sal.http(reqParams)
             .then(function(data, textStatus, res){
                 tgt = res.getResponseHeader('Location');
                 if (tgt) {
@@ -253,7 +253,7 @@ GMA.prototype.login = function (username, password) {
             };
             if (self.jar) reqParams.jar = self.jar;
 
-            $ajax(reqParams)
+            AD.sal.http(reqParams)
             .then(function(data, textStatus, res){
                 // Credentials verified by CAS server. We now have the
                 // service ticket.
@@ -280,7 +280,7 @@ GMA.prototype.login = function (username, password) {
                 reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
             }
 
-            $ajax(reqParams)
+            AD.sal.http(reqParams)
             .then(function(data, textStatus, res){
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
@@ -307,7 +307,7 @@ GMA.prototype.login = function (username, password) {
                 reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
             }
 
-            $ajax(reqParams)
+            AD.sal.http(reqParams)
             .done(function(data, textStatus, res){
                 self.tokenCSRF = data;
                 next();
@@ -425,7 +425,7 @@ GMA.prototype.loginDrupal = function (username, password) {
                         op:'Log in',
                         form_id:'user_login'
                 };
-                $ajax({
+                AD.sal.http({
                     url: self.opts.gmaBase+'?q=user/login',
                     type: "POST",
                     data: loginData
