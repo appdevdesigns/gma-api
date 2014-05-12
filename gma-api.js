@@ -54,6 +54,27 @@ if (typeof module != 'undefined' && module.exports) {
     if (typeof AD.sal == 'undefined') AD.sal = {};
     if (typeof AD.sal.Deferred == 'undefined') AD.sal.Deferred = $.Deferred;
     if (typeof AD.sal.http == 'undefined') AD.sal.http = $.ajax;
+    if (typeof AD.log == 'undefined') AD.log = function() { 
+        var newArgs =[];
+
+        var stripColors = function( value ) {
+            var keys = ['<yellow>', '</yellow>', '<bold>', '</bold>'];
+            keys.forEach(function(key) {
+                var re = new RegExp(key, "g");
+                value = value.replace(re, '');
+            });
+            return value;
+        }
+        for (var i=0; i<arguments.length; i++) {
+            if (typeof arguments[i] == 'string') {
+                newArgs.push(stripColors(arguments[i]));
+            } else {
+                newArgs.push(arguments[i]);
+            }
+        }
+        console.log.apply(null, newArgs);
+    };
+    if (typeof AD.log.error == 'undefined') AD.log.error = AD.log;
 
 }
 
@@ -282,6 +303,7 @@ GMA.prototype.login = function (username, password) {
 
             AD.sal.http(reqParams)
             .then(function(data, textStatus, res){
+//AD.log('<yellow><bold>GMA Login:</bold></yellow>'+data);
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
@@ -307,14 +329,17 @@ GMA.prototype.login = function (username, password) {
                 reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
             }
 
+            if (self.jar) reqParams.jar = self.jar;
+
             AD.sal.http(reqParams)
             .done(function(data, textStatus, res){
                 self.tokenCSRF = data;
+//AD.log('<yellow><bold>Drupal CSRF Token:</bold></yellow>'+data);
                 next();
             })
             .fail(function(res, textStatus, err){
-                console.log('Unable to get CSRF token');
-                console.log(err);
+                AD.log.error('Unable to get CSRF token.  [res, textStatus, err]:', res, textStatus, err);
+
                 // Don't fail on this error in case we are on Drupal 6
                 // instead of Drupal 7.
                 next();
