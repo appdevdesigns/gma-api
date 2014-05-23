@@ -17,7 +17,7 @@ var GMA = function (opts) {
         reloginCallback: null,
         forwardedFor:false
     };
-    this.opts = $.extend(defaults, opts);
+    this.opts = AD.sal.extend(defaults, opts);
 
     this.isLoggedIn = false;
     this.renId = null;
@@ -53,6 +53,7 @@ if (typeof module != 'undefined' && module.exports) {
     if (typeof AD == 'undefined') AD = {};
     if (typeof AD.sal == 'undefined') AD.sal = {};
     if (typeof AD.sal.Deferred == 'undefined') AD.sal.Deferred = $.Deferred;
+    if (typeof AD.sal.extend == 'undefined') AD.sal.extend = $.extend;
     if (typeof AD.sal.http == 'undefined') AD.sal.http = $.ajax;
     if (typeof AD.log == 'undefined') AD.log = function() { 
         var newArgs =[];
@@ -1160,7 +1161,7 @@ var Measurement = function (data) {
         measurementDescription: "This is a GMA measurement",
         measurementValue: 0
     };
-    this.data = $.extend(defaults, data);
+    this.data = AD.sal.extend(defaults, data);
 
     this.timer = null;
     this.pendingDFD = null;
