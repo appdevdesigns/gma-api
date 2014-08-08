@@ -124,7 +124,6 @@ GMA.prototype.request = function (opts) {
         reqParams.jar = this.jar;
     }
 
-//console.log(reqParams);
 
    // $ajax(reqParams)
     AD.sal.http(reqParams)
@@ -243,7 +242,6 @@ GMA.prototype.login = function (username, password) {
                 }
             })
             .fail(function(res, textStatus, err){
-                //console.log(res, err);
                 if (err instanceof Error) {
                     if (!err.message) {
                         err.message = "[" + textStatus + ": " + res.status + "]";
@@ -378,146 +376,6 @@ GMA.prototype.login = function (username, password) {
 
 
 /**
- * @function loginManila
- *
- * Temporary testing login to use on the test GMA server at Manila conference.
- *
- * @param string username
- * @param string password
- * @return jQuery Deferred
- */
-GMA.prototype.loginDrupal = function (username, password) {
-    var dfd = AD.sal.Deferred();
-    var self = this;
-    var canSkipLogin = false;
-
-    console.log('in gma.loginDrupal() ...');
-
-    self.opts.showBusyAnim();
-    GMA.clearCookies();
-    // This is the form info submitted from a Drupal login page:
-    /*
-        form_build_id   form-oJvHA2khmwGCNaARkbsUN_AYVYYsAKG0O8O7B9BJz5k
-        form_id user_login
-        name    mark.griffen@ccci.org
-        op  Log in
-        pass    manila
-    */
-    async.series([
-
-        //Step 0: Make sure we are not already logged in
-        function(next){
-            if (self.isLoggedIn) {
-                console.log("Logging out first to reset session");
-                self.logout()
-                .then(function(){ next(); });
-            } else {
-                next();
-            }
-        },
-
-
-        //Step 1: Attempt to get current user info ...
-        function(next){
-
-//console.log('   gma.loginDrupal() : step 1: attempting to getUser() ... ');
-            self.getUser()
-            .then(function(){
-                next();
-                canSkipLogin = true;
-            })
-            .fail(function(err){
-//console.log('   error in gma.loginDrupal():step 1:.getUser():');
-//console.log(err);
-
-                // an error here could simply mean drupal didn't like our login
-                // credentials.  So we continue on...
-                next();
-            });
-
-        },
-
-        //Step 4: Submit Login Info
-        function(next){
-            if (canSkipLogin) {
-//console.log('   gma.loginDrupal() : step 4: can skip login ... ');
-                next();
-            } else {
-//console.log('   gma.loginDrupal() : step 4: MUST login ... ');
-
-                var loginData = {
-                        name:username,
-                        pass:password,
-                        op:'Log in',
-                        form_id:'user_login'
-                };
-                AD.sal.http({
-                    url: self.opts.gmaBase+'?q=user/login',
-                    type: "POST",
-                    data: loginData
-
-                })
-//                self.request({
-//                    path: self.opts.gmaBase+'?q=user/login',
-//                    method: 'POST',
-//                    data:loginData
-//                })
-                .fail(function(res, textStatus, err){
-//console.log();
-//console.error('----------------');
-//console.error('  *** gma.loginDrupal() : step 4: $ajax(user/login) failed: ');
-//console.log(res);
-//console.log(textStatus);
-//console.log(res.getAllHeaders());
-//console.log(res.getResponseHeader());
-
-                    next(err);
-                })
-                .then(function(data, textStatus, res){
-                    // Credentials verified by Drupal.
-//console.log();
-//console.log('---------');
-//console.log('   gma.loginDrupal() : step 4: $ajax(user/login) success: ');
-//console.log(res);
-//console.log(textStatus);
-//console.log(res.getAllHeaders());
-                    // now ask GMA for who we are:
-                    self.getUser()
-                    .then(function(){ next(); })
-                    .fail(function(err){
-                        // We have logged in to the GMA Drupal site
-                        // but the user doesn't have access to the GMA system there.
-                        // Log out of the Drupal site.
-                        self.logout();
-                        if (!err) {
-                            err = new Error("Could not get user info");
-                        }
-                        next(err);
-                    });
-
-                });
-
-            }
-
-        } // end fn() drupalLogin
-
-    ], function(err){
-        self.opts.hideBusyAnim();
-        if (err) {
-            // All failures from above are caught here
-            dfd.reject(err);
-        } else {
-            dfd.resolve();
-        }
-    });
-
-
-    return dfd;
-};
-
-
-
-/**
  * @function getUser
  *
  * @return jQuery Deferred
@@ -585,8 +443,6 @@ GMA.prototype.getAssignments = function () {
             var assignmentsByID = {};
             var assignmentsByName = {};
             var listAssignments = [];
-//console.log('gma returned staff assignments:');
-//console.log(data.data.staff);
             if (data.data['staff']) {
                 for (var i=0; i<data.data.staff.length; i++) {
                     var nodeId = data.data.staff[i].nodeId;
@@ -634,7 +490,6 @@ GMA.prototype.getReportsForNode = function (nodeId) {
     var dfd = AD.sal.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
-//console.log('   getReportsForNode():  nodeId['+nodeId+']');
     self.request({
         path: servicePath,
         method: 'POST',
@@ -645,22 +500,15 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         }
     })
     .then(function(data, textStatus, res){
-//console.log('request completed for nodeId['+nodeId+']:');
-//console.log(data);
-//console.log(data.data.staffReports);
-//console.log(res);
 
         if (data.success) {
-//console.log('data.successful ...');
 
             if (!data.data.staffReports) {
-//console.log('   don\'t think there are any reports ...');
 
                 // so return an empty array:
                 dfd.resolve([]);
             }
             else {
-//console.log('   compiling reports ...');
 
                 var reports = [];
                 for (var i=0; i<data.data.staffReports.length; i++) {
@@ -695,11 +543,6 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         }
     })
     .fail(function(res, textStatus, err){
-
-//console.log(' shoot! error getting reports...');
-//console.log(res.getAllHeaders());
-//console.log(res);
-//console.log(err);
 
         dfd.reject(err);
     });
@@ -769,8 +612,6 @@ var Assignment = function(data) {
 Assignment.prototype.getMeasurements = function () {
     var dfd = AD.sal.Deferred();
 //    var self = this;
-//console.log('------------');
-//console.log('Assignment.getMeasurements('+this.nodeId+'):');
 
     this.gma.getReportsForNode(this.nodeId)
     .fail(function(err){
@@ -778,8 +619,6 @@ Assignment.prototype.getMeasurements = function () {
         dfd.reject(err);
     })
     .then(function(listReports) {
-//console.log('got this for listReports:');
-//console.log(listReports);
 
         if (listReports.length == 0) {
             console.warn('  --- Assignment.getMeasurements():  no reports returned ... ');
@@ -787,8 +626,6 @@ Assignment.prototype.getMeasurements = function () {
             dfd.resolve([]);
 
         } else {
-//console.log('Assignment.getMeasurements():  '+ listReports.length +' reports returned ... ');
-//console.log(listReports[0]);
 
             listReports[0].measurements()
             .fail(function(err){
@@ -797,14 +634,12 @@ Assignment.prototype.getMeasurements = function () {
                 dfd.reject(err);
             })
             .then(function(list){
-//console.log();
-//console.log('Assignment.getMeasurements(): report.measurement()  returned these measurements:');
-//console.log(list);
-		// list = {
-        //    'strategyName':[ measurements ],
-        //    'strategyName2':[ measuremenList2 ],
-        //      ...
-        //  }
+                // list = {
+                //    'strategyName':[ measurements ],
+                //    'strategyName2':[ measuremenList2 ],
+                //      ...
+                //  }
+
                 // Assumption: We will automatically choose the 1st strategy since
                 // in our ministry context it makes since for ren to report on a node
                 // with only 1 strategy:
@@ -1004,7 +839,6 @@ Report.prototype.reportForDate = function (ymd) {
     var dfd = AD.sal.Deferred();
     var self = this;
 
-//console.log('    . reportForDate():');
     // Lets make sure ymd is in format: YYYYMMDD
     // it could be :  "2014-03-11T05:00:00.000Z"
     var parts = ymd.split('T');
@@ -1023,18 +857,12 @@ Report.prototype.reportForDate = function (ymd) {
         dfd.reject(err);
     })
     .then(function(data, textStatus, res){
-//console.log('    . .then() returned:');
-//console.log();
-//console.log(data);
-//console.log();
         if (data.success) {
 
             var report = null;
 
             if (data.data.totalCount > 0) {
                 var reportData = data.data.staffReports[0];
-//console.log('report :');
-//console.log(reportData);
 
                 report = new Report({
                     gma: self.gma,
@@ -1074,7 +902,6 @@ Report.prototype.save = function () {
 
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/'+ self.reportId;
-//console.log('   servicePath:'+servicePath);
 
     var listMeasurements = [];
 
@@ -1101,15 +928,8 @@ Report.prototype.save = function () {
             dfd.reject(err);
         })
         .then(function(data, status, res) {
-//console.log();
-//console.log(' report.save().then():');
 
             if (data.success) {
-
-//console.log('data:');
-//console.log(data);
-//console.log('res:');
-//console.log(res);
 
                 // now update these measurements to know they've been
                 // saved.  Halleluia!
