@@ -3,21 +3,31 @@
  * @class GMA
  * Joshua Chan <joshua@appdevdesigns.net>
  *
- *  Dependencies:
+ *  Dependencies for browsers/webviews:
  *    - jQuery
+ *    - async
+ *
+ *  Dependencies for Node.js:
+ *    - AppDev framework
  *    - async
  */
 
 var GMA = function (opts) {
     var defaults = {
+        // Base URL of the GMA server. Make sure you include the end slash!
         gmaBase: 'http://gma.example.com/',
+        // Base URL of the CAS server
         casURL: 'https://signin.example.com/cas',
+        // Optional functions to show/hide busy animations while waiting for GMA
         showBusyAnim: function() {},
         hideBusyAnim: function() {},
         reloginCallback: null,
-        forwardedFor:false
+        // Optional value for an "X-Forwarded-For" http request header
+        forwardedFor: false,
+        // Optional function for logging warnings and errors
+        log: console.log
     };
-    this.opts = AD.sal.extend(defaults, opts);
+    this.opts = GMA.Extend(defaults, opts);
 
     this.isLoggedIn = false;
     this.renId = null;
@@ -26,7 +36,7 @@ var GMA = function (opts) {
     this.jar = false;
     this.tokenCSRF = '';
 
-    // on node, we need to track our own cookie jar:
+    // on Node.js, we need to track our own cookie jar:
     if (typeof module != 'undefined' && module.exports) {
         this.jar = require('request').jar();
     }
@@ -38,45 +48,17 @@ if (typeof module != 'undefined' && module.exports) {
     // Node.js
     module.exports = GMA;
     var async = require('async');
-//    var $ = require('node-jquery');
-//    var $ajax = require('./$ajax.js');
     var AD = require('ad-utils');
+    GMA.httpRequest = AD.sal.http;
+    GMA.Deferred = AD.sal.Deferred;
+    GMA.Extend = AD.sal.extend;
+    
 } else {
     // Browser / webview
     window.GMA = GMA;
-//    $ajax = $.ajax;
-
-
-    /////// Setup our Software Abstraction Layer (AD.sal)
-    /////// normally you would include the AD client library, but if not:
-    /////// make sure there is a web client jQuery version of AD.sal
-    if (typeof AD == 'undefined') AD = {};
-    if (typeof AD.sal == 'undefined') AD.sal = {};
-    if (typeof AD.sal.Deferred == 'undefined') AD.sal.Deferred = $.Deferred;
-    if (typeof AD.sal.extend == 'undefined') AD.sal.extend = $.extend;
-    if (typeof AD.sal.http == 'undefined') AD.sal.http = $.ajax;
-    if (typeof AD.log == 'undefined') AD.log = function() { 
-        var newArgs =[];
-
-        var stripColors = function( value ) {
-            var keys = ['<yellow>', '</yellow>', '<bold>', '</bold>'];
-            keys.forEach(function(key) {
-                var re = new RegExp(key, "g");
-                value = value.replace(re, '');
-            });
-            return value;
-        }
-        for (var i=0; i<arguments.length; i++) {
-            if (typeof arguments[i] == 'string') {
-                newArgs.push(stripColors(arguments[i]));
-            } else {
-                newArgs.push(arguments[i]);
-            }
-        }
-        console.log.apply(null, newArgs);
-    };
-    if (typeof AD.log.error == 'undefined') AD.log.error = AD.log;
-
+    GMA.httpRequest = $.ajax;
+    GMA.Deferred = $.Deferred;
+    GMA.Extend = $.extend;
 }
 
 
@@ -84,14 +66,14 @@ if (typeof module != 'undefined' && module.exports) {
 /**
  * Wrapper for jQuery.ajax(), used internally
  */
-GMA.prototype.request = function (opts) {
+GMA.prototype.gmaRequest = function (opts) {
     if (!opts.noAnimation) {
         this.opts.showBusyAnim();
         this.isLoading += 1;
     }
 
     var self = this;
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
 
     var isParseError = function (err) {
         if (!err || !err.message) {
@@ -125,8 +107,7 @@ GMA.prototype.request = function (opts) {
     }
 
 
-   // $ajax(reqParams)
-    AD.sal.http(reqParams)
+    GMA.httpRequest(reqParams)
     .always(function(){
         if (!opts.noAnimation) {
             self.isLoading -= 1;
@@ -143,19 +124,19 @@ GMA.prototype.request = function (opts) {
             // instead of serving up a JSON response.
             if (self.opts.reloginCallback) {
                 opts.reloginCallback()
-                .then(function(){
+                .done(function(){
                     // Resend the request
-                    self.request(opts)
-                    .then(function(res, status, err){
+                    self.gmaRequest(opts)
+                    .done(function(res, status, err){
                         dfd.resolve(res, status, err);
                     });
                 })
                 .fail(function(err){
-                    console.log("Relogin failed", err);
+                    self.opts.log("Relogin failed", err);
                 });
             } else {
                 // Deliver a hopefully more helpful error
-                console.log("Session timeout?", err);
+                self.opts.log("Session timeout?", err);
                 dfd.reject(res, status, new Error("Login session timed out"));
             }
         }
@@ -163,7 +144,7 @@ GMA.prototype.request = function (opts) {
             dfd.reject(res, status, err);
         }
     })
-    .then(function(data, status, res){
+    .done(function(data, status, res){
         dfd.resolve(data, status, res);
     });
 
@@ -199,12 +180,9 @@ GMA.clearCookies = function () {
 GMA.prototype.login = function (username, password) {
     var tgt;
     var st;
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
-    //var gmaHome = self.opts.gmaBase + '?q=node';
-    //var gmaHome = self.opts.gmaBase + 'index.php?q=en/node';
     var gmaHome = self.opts.gmaBase + '?q=en/node&destination=node';
-    //var gmaHome = self.opts.gmaBase + '?q=gmaservices&destination=gmaservices';
 
     self.opts.showBusyAnim();
     GMA.clearCookies();
@@ -213,9 +191,9 @@ GMA.prototype.login = function (username, password) {
         // Step 0: Make sure we are not already logged in
         function(next){
             if (self.isLoggedIn) {
-                console.log("Logging out first to reset session");
+                self.opts.log("Logging out first to reset session");
                 self.logout()
-                .then(function(){ next(); });
+                .done(function(){ next(); });
             } else {
                 next();
             }
@@ -231,13 +209,13 @@ GMA.prototype.login = function (username, password) {
             };
             if (self.jar) reqParams.jar = self.jar;
 
-            AD.sal.http(reqParams)
-            .then(function(data, textStatus, res){
+            GMA.httpRequest(reqParams)
+            .done(function(data, textStatus, res){
                 tgt = res.getResponseHeader('Location');
                 if (tgt) {
                     next();
                 } else {
-                    console.log(data, textStatus, res);
+                    self.opts.log(data, textStatus, res);
                     next(new Error('Credentials were not accepted'));
                 }
             })
@@ -273,8 +251,8 @@ GMA.prototype.login = function (username, password) {
             };
             if (self.jar) reqParams.jar = self.jar;
 
-            AD.sal.http(reqParams)
-            .then(function(data, textStatus, res){
+            GMA.httpRequest(reqParams)
+            .done(function(data, textStatus, res){
                 // Credentials verified by CAS server. We now have the
                 // service ticket.
                 st = data;
@@ -300,9 +278,8 @@ GMA.prototype.login = function (username, password) {
                 reqParams.headers = { 'X-Forwarded-For' : self.opts.forwardedFor };
             }
 
-            AD.sal.http(reqParams)
-            .then(function(data, textStatus, res){
-//AD.log('<yellow><bold>GMA Login:</bold></yellow>'+data);
+            GMA.httpRequest(reqParams)
+            .done(function(data, textStatus, res){
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
@@ -330,14 +307,13 @@ GMA.prototype.login = function (username, password) {
 
             if (self.jar) reqParams.jar = self.jar;
 
-            AD.sal.http(reqParams)
+            GMA.httpRequest(reqParams)
             .done(function(data, textStatus, res){
                 self.tokenCSRF = data;
-//AD.log('<yellow><bold>Drupal CSRF Token:</bold></yellow>'+data);
                 next();
             })
             .fail(function(res, textStatus, err){
-                AD.log.error('Unable to get CSRF token.  [res, textStatus, err]:', res, textStatus, err);
+                self.opts.log('Unable to get CSRF token.  [res, textStatus, err]:', res, textStatus, err);
 
                 // Don't fail on this error in case we are on Drupal 6
                 // instead of Drupal 7.
@@ -347,7 +323,7 @@ GMA.prototype.login = function (username, password) {
         // Step 5: Get user info
         function(next){
             self.getUser()
-            .then(function(){ next(); })
+            .done(function(){ next(); })
             .fail(function(err){
                 // We have logged in to the GMA Drupal site
                 // but the user doesn't have access to the GMA system there.
@@ -386,15 +362,15 @@ GMA.prototype.login = function (username, password) {
  *      }
  */
 GMA.prototype.getUser = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_user&type=current';
 
-    self.request({
+    self.gmaRequest({
         path: servicePath,
         method: 'GET'
     })
-    .then(function(data, textStatus, res){
+    .done(function(data, textStatus, res){
         if (data.success) {
             var ren = data.data[0];
             self.preferredName = ren.preferredName;
@@ -429,15 +405,15 @@ GMA.prototype.getUser = function () {
  *      - listAssignments [ { AssignmentObj1 }, { AssignmentObj2 }, ... ]
  */
 GMA.prototype.getAssignments = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_user/' + self.renId + '/assignments/staff';
 
-    self.request({
+    self.gmaRequest({
         path: servicePath,
         method: 'GET'
     })
-    .then(function(data, textStatus, res){
+    .done(function(data, textStatus, res){
         if (data.success) {
             // Create two basic lookup objects indexed by nodeId and by name
             var assignmentsByID = {};
@@ -462,7 +438,7 @@ GMA.prototype.getAssignments = function () {
             var err = new Error(data.error.errorMessage);
             err.origin = servicePath;
             dfd.reject(err);
-            console.log(data);
+            self.opts.log(data);
         }
     })
     .fail(function(res, textStatus, err){
@@ -487,10 +463,10 @@ GMA.prototype.getAssignments = function () {
  *      - [ {ReportObj1}, {ReportObj2}, ... ]
  */
 GMA.prototype.getReportsForNode = function (nodeId) {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
-    self.request({
+    self.gmaRequest({
         path: servicePath,
         method: 'POST',
         data: {
@@ -499,7 +475,7 @@ GMA.prototype.getReportsForNode = function (nodeId) {
             //submitted: false
         }
     })
-    .then(function(data, textStatus, res){
+    .done(function(data, textStatus, res){
 
         if (data.success) {
 
@@ -538,7 +514,7 @@ GMA.prototype.getReportsForNode = function (nodeId) {
         } else {
             var err = new Error(data.error.errorMessage);
             err.origin = servicePath;
-            console.log(data);
+            self.opts.log(data);
             dfd.reject(err);
         }
     })
@@ -560,15 +536,15 @@ GMA.prototype.getReportsForNode = function (nodeId) {
  * @return jQuery Deferred
  */
 GMA.prototype.logout = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
 
-    self.request({
+    self.gmaRequest({
         path: '?q=logout',
         method: 'HEAD',
         dataType: 'html'
     })
-    .then(function(){
+    .done(function(){
         self.isLoggedIn = false;
         self.renId = null;
         self.GUID = null;
@@ -610,18 +586,18 @@ var Assignment = function(data) {
  *      - [{MeasurementObj1}, {MeasurementObj2}, ... ]
  */
 Assignment.prototype.getMeasurements = function () {
-    var dfd = AD.sal.Deferred();
-//    var self = this;
+    var dfd = GMA.Deferred();
+    var self = this;
 
     this.gma.getReportsForNode(this.nodeId)
     .fail(function(err){
-        console.error('  *** Assignemnt.getMeasurement() error finding reports...');
+        self.gma.opts.log('  *** Assignemnt.getMeasurement() error finding reports...');
         dfd.reject(err);
     })
-    .then(function(listReports) {
+    .done(function(listReports) {
 
         if (listReports.length == 0) {
-            console.warn('  --- Assignment.getMeasurements():  no reports returned ... ');
+            self.gma.opts.log('  --- Assignment.getMeasurements():  no reports returned ... ');
             // no measurements for this assignment...
             dfd.resolve([]);
 
@@ -629,11 +605,11 @@ Assignment.prototype.getMeasurements = function () {
 
             listReports[0].measurements()
             .fail(function(err){
-                console.error('  *** Assignment.getMeasurements(): report.measurement()  had and error:');
-                console.log(err);
+                self.gma.opts.log('  *** Assignment.getMeasurements(): report.measurement()  had and error:');
+                self.gma.opts.log(err);
                 dfd.reject(err);
             })
-            .then(function(list){
+            .done(function(list){
                 // list = {
                 //    'strategyName':[ measurements ],
                 //    'strategyName2':[ measuremenList2 ],
@@ -715,15 +691,15 @@ Report.prototype.id = function () {
  * @return jQuery Deferred
  */
 Report.prototype.measurements = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/' + self.reportId + '/numeric';
 
-    self.gma.request({
+    self.gma.gmaRequest({
         path: servicePath,
         method: 'GET'
     })
-    .then(function(data, textStatus, res) {
+    .done(function(data, textStatus, res) {
         if (data.success) {
 
             // Parse through the layers of JSON structure
@@ -811,12 +787,6 @@ Report.formatDate = function (ymd) {
  * @return string
  */
 Report.prototype.period = function () {
-    /*
-    var dfd = AD.sal.Deferred();
-    dfd.resolve(this.startDate);
-    return dfd;
-    */
-
     return Report.formatDate(this.startDate)
             + ' &ndash; '
             + Report.formatDate(this.endDate);
@@ -836,7 +806,7 @@ Report.prototype.period = function () {
  *      - { ReportObj }
  */
 Report.prototype.reportForDate = function (ymd) {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
 
     // Lets make sure ymd is in format: YYYYMMDD
@@ -845,7 +815,7 @@ Report.prototype.reportForDate = function (ymd) {
     var date = parts[0].replace('-','').replace('-','');
 
     var servicePath = '?q=gmaservices/gma_staffReport/searchOwn';
-    this.gma.request({
+    this.gma.gmaRequest({
         path: servicePath,
         method: 'POST',
         data: {
@@ -856,7 +826,7 @@ Report.prototype.reportForDate = function (ymd) {
     .fail(function(res, textStatus, err){
         dfd.reject(err);
     })
-    .then(function(data, textStatus, res){
+    .done(function(data, textStatus, res){
         if (data.success) {
 
             var report = null;
@@ -898,7 +868,7 @@ Report.prototype.reportForDate = function (ymd) {
  * @return jQuery Deferred
  */
 Report.prototype.save = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
 
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/'+ self.reportId;
@@ -918,7 +888,7 @@ Report.prototype.save = function () {
     // there are measurements to update
     if (listMeasurements.length > 0) {
 
-        self.gma.request({
+        self.gma.gmaRequest({
             noAnimation: true,
             path: servicePath,
             method: 'PUT',
@@ -927,7 +897,7 @@ Report.prototype.save = function () {
         .fail(function(res, status, err) {
             dfd.reject(err);
         })
-        .then(function(data, status, res) {
+        .done(function(data, status, res) {
 
             if (data.success) {
 
@@ -981,7 +951,7 @@ var Measurement = function (data) {
         measurementDescription: "This is a GMA measurement",
         measurementValue: 0
     };
-    this.data = AD.sal.extend(defaults, data);
+    this.data = GMA.Extend(defaults, data);
 
     this.timer = null;
     this.pendingDFD = null;
@@ -1095,7 +1065,7 @@ Measurement.prototype.value = function (val) {
  */
 Measurement.prototype.delayedSave = function () {
     var self = this;
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
 
     // Cancel any previous delayed save requests
     if (self.timer) {
@@ -1109,7 +1079,7 @@ Measurement.prototype.delayedSave = function () {
     self.timer = setTimeout(function(){
         // The actual save is done here once the time comes
         self.save()
-        .then(function(){
+        .done(function(){
             dfd.resolve();
         })
         .fail(function(err){
@@ -1130,17 +1100,17 @@ Measurement.prototype.delayedSave = function () {
  * @return jQuery Deferred
  */
 Measurement.prototype.save = function () {
-    var dfd = AD.sal.Deferred();
+    var dfd = GMA.Deferred();
     var self = this;
     var servicePath = '?q=gmaservices/gma_staffReport/'+ self.data.reportId;
 
-    self.gma.request({
+    self.gma.gmaRequest({
         noAnimation: true,
         path: servicePath,
         method: 'PUT',
         data: [  self.getSaveData() ]
     })
-    .then(function(data, status, res) {
+    .done(function(data, status, res) {
 
         if (data.success) {
 
