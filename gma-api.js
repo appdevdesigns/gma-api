@@ -800,14 +800,22 @@ Assignment.prototype.getMeasurements = function () {
 //console.log();
 //console.log('Assignment.getMeasurements(): report.measurement()  returned these measurements:');
 //console.log(list);
-		// list = {
-        //    'strategyName':[ measurements ],
-        //    'strategyName2':[ measuremenList2 ],
-        //      ...
-        //  }
+        		// list = {
+                //    'strategyName':[ measurements ],
+                //    'strategyName2':[ measuremenList2 ],
+                //      ...
+                //  }
+
                 // Assumption: We will automatically choose the 1st strategy since
                 // in our ministry context it makes since for ren to report on a node
                 // with only 1 strategy:
+
+                // *** : ok, ran into an issue where this bit us!  
+                //       Testing out NextSteps server we were given a Node with 3 strategies
+                //       which resulted in a crash.  We fixed the crash but this question
+                //       remains ... what to do with multiple strategies?
+                //       --> currently we are waiting until a real life example crops up and
+                //           then deal with the customers then to figure this out.
                 for (var strategy in list) {
                     dfd.resolve(list[strategy]);
                     return;
@@ -956,7 +964,7 @@ Report.prototype.measurements = function () {
  *
  * return a more readable date string than what is provided from GMA.
  *
- * @param string ymd  the GMA date string
+ * @param string ymd  the GMA date string ("YYYYMMDD")
  * @return string
  */
 Report.formatDate = function (ymd) {
