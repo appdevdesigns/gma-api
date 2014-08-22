@@ -10,13 +10,15 @@
  *  Dependencies for Node.js:
  *    - AppDev framework
  *    - async
+ *    - request
  */
 
 var GMA = function (opts) {
     var defaults = {
         // Base URL of the GMA server. Make sure you include the end slash!
         gmaBase: 'http://gma.example.com/',
-        // Base URL of the CAS server
+        // Base URL of the CAS server. Optional if you can obtain your own
+        // service ticket for logging in to GMA.
         casURL: 'https://signin.example.com/cas',
         // Optional functions to show/hide busy animations while waiting for GMA
         showBusyAnim: function() {},
@@ -28,6 +30,10 @@ var GMA = function (opts) {
         log: console.log
     };
     this.opts = GMA.Extend(defaults, opts);
+    
+    // This will be the GMA site page that is fetched to begin the user
+    // session. Use this as the service URL when requesting a ticket from CAS.
+    this.gmaHome = this.opts.gmaBase + '?q=en/node&destination=node';
 
     this.isLoggedIn = false;
     this.renId = null;
@@ -202,26 +208,46 @@ GMA.clearCookies = function () {
  * @return jQuery Deferred
  */
 GMA.prototype.login = function (username, password) {
+    var dfd = GMA.Deferred();
+    var self = this;
+    
+    self.restfulCasTicket(username, password)
+    .fail(function(err){
+     dfd.reject(err);
+    })
+    .done(function(st){
+        self.loginWithTicket(st)
+        .fail(function(err){
+            dfd.reject(err);
+        })
+        .done(function(){
+            dfd.resolve();
+        });
+    });
+
+    return dfd;
+};
+
+
+
+/**
+ * @function restfulCasTicket
+ *
+ * Uses the CAS RESTful interface to obtain a CAS service ticket for GMA.
+ *
+ * @param string username
+ * @param string password
+ * @return jQuery Deferred
+ */
+GMA.prototype.restfulCasTicket = function (username, password) {
     var tgt;
     var st;
     var dfd = GMA.Deferred();
     var self = this;
-    var gmaHome = self.opts.gmaBase + '?q=en/node&destination=node';
 
     self.opts.showBusyAnim();
-    GMA.clearCookies();
     async.series([
 
-        // Step 0: Make sure we are not already logged in
-        function(next){
-            if (self.isLoggedIn) {
-                self.opts.log("Logging out first to reset session");
-                self.logout()
-                .always(function(){ next(); });
-            } else {
-                next();
-            }
-        },
         // Step 1: Get the TGT
         function(next){
 
@@ -271,7 +297,7 @@ GMA.prototype.login = function (username, password) {
             var reqParams = {
                 url: tgt,
                 type: "POST",
-                data: { service: gmaHome }
+                data: { service: self.gmaHome }
             };
             if (self.jar) reqParams.jar = self.jar;
 
@@ -285,12 +311,57 @@ GMA.prototype.login = function (username, password) {
             .fail(function(res, textStatus, err){
                 next(err);
             });
-        },
-        // Step 3: Log in to GMA
+        }
+
+    ], function(err){
+        self.opts.hideBusyAnim();
+        if (err) {
+            // All failures from above are caught here
+            dfd.reject(err);
+        } else {
+            dfd.resolve(st);
+        }
+    });
+
+    return dfd;
+};
+
+
+
+/**
+ * @function loginWithTicket
+ *
+ * Logs in to GMA using a service/proxy ticket that was already obtained,
+ * such as with a CAS proxy.
+ *
+ * Further requests to GMA will be authenticated because of the browser
+ * cookie.
+ *
+ * @param string ticket
+ * @return jQuery Deferred
+ */
+GMA.prototype.loginWithTicket = function (ticket) {
+    var dfd = GMA.Deferred();
+    var self = this;
+
+    self.opts.showBusyAnim();
+    async.series([
+
+        // Step 0: Make sure we are not already logged in
         function(next){
-            var finalURL = gmaHome +
-                (gmaHome.match(/[?]/) ? "&" : '?') +
-                "ticket=" + st;
+            if (self.isLoggedIn) {
+                self.opts.log("Logging out first to reset session");
+                self.logout()
+                .always(function(){ next(); });
+            } else {
+                next();
+            }
+        },
+        // Step 1: Log in to GMA
+        function(next){
+            var finalURL = self.gmaHome +
+                (self.gmaHome.match(/[?]/) ? "&" : '?') +
+                "ticket=" + ticket;
 
             var reqParams = {
                 url: finalURL,
@@ -318,7 +389,7 @@ GMA.prototype.login = function (username, password) {
                 next(err);
             });
         },
-        // Step 4: Fetch the Drupal CSRF token
+        // Step 2: Fetch the Drupal CSRF token
         function(next){
             var reqParams = {
                 url: self.opts.gmaBase + '?q=services/session/token',
@@ -344,7 +415,7 @@ GMA.prototype.login = function (username, password) {
                 next();
             });
         },
-        // Step 5: Get user info
+        // Step 3: Get user info
         function(next){
             self.getUser()
             .done(function(){ next(); })
