@@ -41,10 +41,10 @@ var GMA = function (opts) {
     this.isLoading = 0;
     this.jar = false;
     this.tokenCSRF = '';
-
+    
     // on Node.js, we need to track our own cookie jar:
     if (typeof module != 'undefined' && module.exports) {
-        this.jar = require('request').jar();
+        this.jar = request.jar();
     }
 };
 
@@ -54,6 +54,7 @@ if (typeof module != 'undefined' && module.exports) {
     // Node.js
     module.exports = GMA;
     var async = require('async');
+    var request = require('request');
     var AD = require('ad-utils');
     GMA.httpRequest = AD.sal.http;
     GMA.Deferred = AD.sal.Deferred;
@@ -176,21 +177,6 @@ GMA.responseKey = {
         type: 'director',
         reports: 'directorReports',
         id: 'directorReportId'
-    }
-};
-
-
-
-GMA.clearCookies = function () {
-    if (typeof document == 'undefined') return;
-    
-    // This does not seem to work very well
-    var cookie = document.cookie.split(';');
-    for (var i = 0; i < cookie.length; i++) {
-        var chip = cookie[i],
-            entry = chip.split("="),
-            name = entry[0];
-        document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
     }
 };
 
@@ -379,6 +365,7 @@ GMA.prototype.loginWithTicket = function (ticket) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
                 } else {
+                    // The session cookie has now been set
                     next();
                 }
             })
@@ -550,6 +537,34 @@ GMA.prototype.getAssignments = function (role) {
 
     return dfd;
 };
+
+
+
+/**
+ * @function getReport
+ *
+ * Delivers a Report object instance associated with a given reportId.
+ *
+ * Useful when you need to get a given report's measurements without first 
+ * fetching all of the other reports in the node.
+ *
+ * @param int reportId
+ * @param string role (Optional)
+ * @return Report
+ */
+GMA.prototype.getReport = function (reportId, role) {
+    role = role || 'staff';
+    var report = new Report({
+        gma: this,
+        role: role,
+        reportId: reportId,
+        nodeId: null,
+        startDate: null,
+        endDate: null
+    });
+    
+    return report;
+}
 
 
 
