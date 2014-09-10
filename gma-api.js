@@ -1277,3 +1277,15 @@ Measurement.prototype.saved = function () {
     this.isDirty = false;
 };
 
+
+
+/**
+ * @function toJSON
+ *
+ * Return a simple json object representing the Measurement.
+ *
+ */
+Measurement.prototype.toJSON = function () {
+    return this.data;
+};
+
