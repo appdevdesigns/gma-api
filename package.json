@@ -4,9 +4,10 @@
   "description": "Client library for GMA web services",
   "main": "gma-api.js",
   "dependencies": {
+    "ad-utils": "git://github.com/appdevdesigns/ad-utils",
     "async": "0.2.x",
     "request": "2.34.x",
-    "ad-utils": "git://github.com/appdevdesigns/ad-utils"
+    "xlsx": "^0.7.10"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
