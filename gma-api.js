@@ -822,7 +822,7 @@ GMA.prototype.reportOptionsForNodeID = function(nodeId) {
 
 
 /**
- * @function getStrategies
+ * @function strategiesForNodeID
  *
  * Return an array of GMA strategy definitions for given nodeId.
  *
@@ -837,7 +837,7 @@ GMA.prototype.reportOptionsForNodeID = function(nodeId) {
  *          { languageId:idN,  langaugeName:'codeN'}
  *      ]
  */
-GMA.prototype.getStrategies = function(nodeId) {
+GMA.prototype.strategiesForNodeID = function(nodeId) {
     var dfd = GMA.Deferred();
 
     // reuse our reportOptionsForNodeID() 
@@ -1032,7 +1032,7 @@ GMA.prototype.getGraphData = function (options) {
         // step 2:  resolve the Strategy info:
         function(next) {
 
-            self.getStrategies(nodeID)
+            self.strategiesForNodeID(nodeID)
             .fail(function(err){
                 next(err);
             })
