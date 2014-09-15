@@ -41,6 +41,21 @@ var GMA = function (opts) {
     this.isLoading = 0;
     this.jar = false;
     this.tokenCSRF = '';
+
+
+    // _sessionCache: a set of cached secondary data appropriate to this one connection
+    //  .strategies
+    this._sessionCache = {
+
+        // cache report options for given nodeIds:
+        reportOptions: {
+            /*
+                nodeId: {  report options }  
+                // see .reportOptionsForNodeID() description for data structure
+            */
+        }
+
+    };
     
     // on Node.js, we need to track our own cookie jar:
     if (typeof module != 'undefined' && module.exports) {
@@ -179,6 +194,29 @@ GMA.responseKey = {
         id: 'directorReportId'
     }
 };
+
+
+
+// This lookup caches the standard GMA system settings
+//  these should be system wide settings
+GMA._systemSettings = {
+
+    // attempt to provide a language_code to languageName lookup:
+    langcodeToName: {
+        'en'        : 'English',
+        'ko'        : '한국어',
+        'zh-hans'   : '中文'
+    },
+
+    /*
+    languages:[
+        { languageId:id1,  languageName:'name1'},
+        { languageId:id2,  languageName:'name2'},
+        ...
+        { languageId:idN,  langaugeName:'nameN'}
+    ]
+    */
+}
 
 
 
@@ -537,6 +575,800 @@ GMA.prototype.getAssignments = function (role) {
 
     return dfd;
 };
+
+
+
+/**
+ * @function getLanguages
+ *
+ * Return an array of languages supported by the current GMA system.
+ *
+ * @param string role (Optional) 'staff' or 'director'
+ * @return jQuery Deferred
+ *      resolves with array:
+ *      [
+ *          { languageId:id1,  languageName:'name1'},
+ *          { languageId:id2,  languageName:'code2'},
+ *          ...
+ *          { languageId:idN,  langaugeName:'codeN'}
+ *      ]
+ */
+GMA.prototype.getLanguages = function() {
+    var dfd = GMA.Deferred();
+    var self = this;
+    var servicePath = '?q=gmaservices/gma_language';
+
+    
+
+    // if we have already cached this info: return that
+    if (GMA._systemSettings.languages) {
+
+        dfd.resolve(GMA._systemSettings.languages);
+
+    // else run the request:
+    } else {
+
+        self.gmaRequest({
+            // role: role,
+            path: servicePath,
+            method: 'GET'
+        })
+        .fail(function(res, textStatus, err){
+
+            err.service_message = 'error in GMA.getLanguages() ';
+            dfd.reject(err);
+        })
+        .done(function(data, textStatus, res){
+
+            if (data.success) {
+
+                if (data.data) {
+
+                    // store this info for later:
+                    GMA._systemSettings.languages = data.data;
+                    dfd.resolve(data.data);
+                } else {
+
+                    // complain ... this just isn't right!
+                    dfd.reject(new Error('NO_DATA: GMA.getLanguages() did not return any data.  Bad!'));
+                }
+
+            } else {
+                var err = new Error(data.error.errorMessage);
+                err.origin = servicePath;
+                self.opts.log(data);
+                dfd.reject(err);
+            }
+        });
+
+    }
+
+    return dfd;
+
+}
+
+
+
+/**
+ * @function measurementsForNodeID
+ *
+ * Return an array of GMA measurements related to a given nodeId.
+ *
+ * @param {integer} nodeId The node id to get strategies for
+ *
+ * @return jQuery Deferred
+ *      resolves with object:
+ *      {
+ *          "numericList": [
+ *              {
+ *                  "id1": "name1"
+ *              },
+ *              {
+ *                  "id2": "name2"
+ *              },
+ *              ...
+ *              {
+ *                  "idN": "nameN"
+ *              }
+ *          ],
+ *          "calculatedList": null
+ *      }
+ */
+GMA.prototype.measurementsForNodeID = function(nodeId) {
+    var dfd = GMA.Deferred();
+
+    // reuse our reportOptionsForNodeID() 
+    this.reportOptionsForNodeID(nodeId)
+    .fail(function(err){
+        dfd.reject(err);
+    })
+    .done(function(data){
+        dfd.resolve(data.measurementSelection);
+    });
+
+    return dfd;
+}
+
+
+
+/**
+ * @function reportOptionsForNodeID
+ *
+ * Return the GMA report option data for a given nodeId.
+ *
+ * @param {integer} nodeId The node id to get option info for
+ *
+ * @return jQuery Deferred
+ *      resolves with object:
+ *      {
+ *           "translation": {
+ *               "field1": "translation1",
+ *               "field2": "translation2",
+ *               ...
+ *               "fieldN": "translationN"
+ *           },
+ *           "dateRange": [
+ *               {
+ *                   "relative": [
+ *                       { "1": "Last Period" },
+ *                       { "2": "Last 3 Periods" },
+ *                       { "3": "Last 6 Periods" },
+ *                       { "4": "Last 12 Periods" }
+ *                   ]
+ *               },
+ *               {
+ *                   "fixed": {
+ *                       "from": "",  // empty "" means you provide the value
+ *                       "to": ""
+ *                   }
+ *               }
+ *           ],
+ *           "reportFormat": [
+ *               {
+ *                   "byReportingInterval": {
+ *                       "granularity": [
+ *                           { "2": "Monthly" },
+ *                           {  "3": "Quarterly" },
+ *                           { "4": "Half-Yearly" },
+ *                           { "5": "Yearly" }
+ *                       ],
+ *                       "showTotalColumn": [ true, false ]
+ *                   }
+ *               },
+ *               {
+ *                   "byOrganizationStructure": { "showLastModifiedDate": [ true, false ]  }
+ *               },
+ *               {
+ *                   "byStrategyStructure": { "showTotalColumn": [ true, false ] }
+ *               },
+ *               {
+ *                   "byStaff": { "showTotalColumn": [ true, false ] }
+ *               }
+ *           ],
+ *           "organizationSelection": [
+ *               { "id": "name" }
+ *           ],
+ *           "strategySelection": [
+ *               { "id1": "name1" },
+ *               { "id2": "name2" },
+ *               ...
+ *               { "idN": "nameN" }
+ *           ],
+ *           "measurementSelection": {
+ *               "numericList": [
+ *                   { "id1": "name1" },
+ *                   { "id2": "name2" },
+ *                   ...
+ *                   { "idN": "nameN" }
+ *               ],
+ *               "calculatedList": null
+ *           }
+ *      }
+ */
+GMA.prototype.reportOptionsForNodeID = function(nodeId) {
+    var dfd = GMA.Deferred();
+    var self = this;
+    var servicePath = '?q=gmaservices/gma_advancedReport/{nodeId}/options';
+
+
+    // if we have already cached this info: return that
+    if (this._sessionCache.reportOptions[nodeId]) {
+ 
+        dfd.resolve(this._sessionCache.reportOptions[nodeId]);
+
+    // else run the request:
+    } else {
+
+        var url = servicePath.replace('{nodeId}', nodeId);
+        self.gmaRequest({
+            path: url,
+            method: 'GET'
+        })
+        .fail(function(res, textStatus, err){
+
+            err.service_message = 'error in GMA.reportOptionsForNodeID() ';
+            dfd.reject(err);
+        })
+        .done(function(data, textStatus, res){
+
+            if (data.success) {
+
+                if (data.data) {
+
+                    // store this info for later:
+                    self._sessionCache.reportOptions[nodeId] = data.data;
+                    dfd.resolve(data.data);
+                } else {
+
+                    // complain ... this just isn't right!
+                    dfd.reject(new Error('NO_DATA: GMA.reportOptionsForNodeID() did not return any data.  Bad!'));
+                }
+
+            } else {
+                var err = new Error(data.error.errorMessage);
+                err.origin = servicePath;
+                err.service_message = 'error in GMA.reportOptionsForNodeID()';
+                self.opts.log(data);
+                dfd.reject(err);
+            }
+        });
+
+    }
+
+    return dfd;
+
+}
+
+
+
+/**
+ * @function getStrategies
+ *
+ * Return an array of GMA strategy definitions for given nodeId.
+ *
+ * @param {integer} nodeId The node id to get strategies for
+ *
+ * @return jQuery Deferred
+ *      resolves with array:
+ *      [
+ *          { languageId:id1,  languageName:'name1'},
+ *          { languageId:id2,  languageName:'code2'},
+ *          ...
+ *          { languageId:idN,  langaugeName:'codeN'}
+ *      ]
+ */
+GMA.prototype.getStrategies = function(nodeId) {
+    var dfd = GMA.Deferred();
+
+    // reuse our reportOptionsForNodeID() 
+    this.reportOptionsForNodeID(nodeId)
+    .fail(function(err){
+        dfd.reject(err);
+    })
+    .done(function(data){
+        dfd.resolve(data.strategySelection);
+    });
+
+    return dfd;
+
+}
+
+
+
+/**
+ * @function getGraphData
+ *
+ * Queries the GMA server for measurement values of a Node over several 
+ * reporting intervals.
+ *
+ * Used internally by Assignments.getGraphData()
+ *
+ * The options include:
+ *
+ * @param {integer} nodeID
+ *      The organization node id value (Assignment.nodeId).
+ * @param {array/string/integer} strategies
+ *      (optional)  if not provided, all strategies will be enabled.
+ *      {string}    if a single string is given, we will use this to match the GMA strategy name
+ *      {integer}   if an integer is provided, then we will use this to match the GMA strategy id
+ *      {array}     more than 1 strategy name/id can be provided.
+ * @param {string} startDate
+ *      (optional)  If not provided, then default to 13 months ago
+ *(     format:  YYYYMMDD
+ * @param {string} endDate
+ *      (optional) If not provided, then default to 1 month ago
+ *      format: YYYYMMDD
+ * @param {array} measurements
+ *      (optional) An array of measurement_id values.  If not provided, then all measurements 
+ *                 associated with a node will be requested.
+ * @param {integer/string} language
+ *      (Optional) if not provided, then results will be in user's default GMA 
+ *                 language
+ *      {integer}  you can provide the GMA index of the language you want to use
+ *      {string}   or you can provide the string language_code you want to attempt to match
+ *                 if no match is found, then we return to the default
+ * @return {deferred}
+ *
+ *      The deferred with be resolved with a data structure in this format:
+ *
+ *  {
+ *      nodeId:1,
+ *      title:'Report Title Here',
+ *      info:'Say some descriptive info about how there are only 67% reporting on this report like you currently do',
+ *      periods: [ 'date1', 'date2', ... 'dateP' ],
+ *      strategies: [
+ *          { id:1,  name:'strategyName1' },
+ *          { id:2,  name:'strategyName2' },
+ *          ...
+ *          { id:N,  name:'strategyNameN' }
+ *      ],
+ *      measurements:[
+ *          { id:1, name:'measurementName1',  strategyId:1,  values:[ v1, v2, ... vP ] },
+ *          { id:2, name:'measurementName2',  strategyId:1,  values:[ v1, v2, ... vP ] },
+ *          ...
+ *          { id:M, name:'measurementNameM',  strategyId:N,  values:[ v1, v2, ... vP ] },
+ *      ]
+ *  }
+ *
+ */
+GMA.prototype.getGraphData = function (options) {
+    var dfd = GMA.Deferred();
+    var self = this;
+    var servicePath = '?q=gmaservices/gma_advancedReport/{nodeId}/generate';
+
+
+    // nodeID is required!
+    var nodeID = options.nodeId || null;
+    if (nodeID == null) {
+        dfd.reject(new Error('INVALID_PARAMS: missing nodeID in call to GMA.getGraphData()'));
+        return dfd;
+    }
+
+
+    // default start and end dates should be the previous 12 months
+    var startDate = options.startDate;
+    var endDate   = options.endDate;
+    if (!startDate) {
+        // default to 12 months ago:
+        var now = new Date();
+        var date12MonthsAgo = new Date(new Date(now).setMonth(now.getMonth()-12));
+        // iso string:  'yyyy-mm-ddThh:mm:ss.tttZ'
+        // we want: yyyymmdd
+        startDate = date12MonthsAgo.toISOString().split('T')[0].split('-').join('');
+    }
+    if (!endDate) {
+        // default to 1 month ago:
+        var now = new Date();
+        date1MonthAgo = new Date(new Date(now).setMonth(now.getMonth()-1));
+        // iso string:  'yyyy-mm-ddThh:mm:ss.tttZ'
+        // we want: yyyymmdd
+        endDate = date1MonthAgo.toISOString().split('T')[0].split('-').join('');
+    }
+
+
+    // strategy list:
+    // make sure we end up with an array of values here:
+    var strategyList = [];  // array of strategy id's used in call to graph service
+    var strategies = options.strategies || [];
+    if (!strategies.length) {
+        // if ! array, make it one:
+        strategies = [strategies];
+    }
+    var stratNameHash = {}; // { 'stratName' : 'id' }
+
+
+    // measurements are optional!
+    var measurementList = [];  // array of measurement ids being sent to our web service
+    var measurements = options.measurements || null;    // provided measurements
+    if (measurements == null) {
+        measurements = [];  // default to empty []
+    }
+    var measurementNameHash = {};  // { 'measureName' : 'id' }
+
+    // language 
+    var LanguageURL = '';        // url addition for non default language
+    var language = options.language || null;
+
+
+//// Question: do we allow setting granularity? 
+
+
+    // This is the JSON options object to be sent to the GMA webservice
+    var serviceOptions = null; 
+
+    var xmlData = null;  // the XML data returned from the web service
+
+    var finalResults = null;      // What we are actually returning from this method:
+
+
+    async.series([
+
+        // step 1: resolve language options:
+        function(next) {
+
+            // if no language option provide ... skip
+            if (language == null) {
+
+                next();
+            } else {
+
+                // get current language settings:
+                self.getLanguages()
+                .fail(function(err){
+                    next(err);
+                })
+                .done(function(list){
+
+                    // provided language could either be by ID or Name
+                    // see if we can find it in our list
+                    var foundLanguage = null;
+                    var nameForCode = GMA._systemSettings.langcodeToName[language];  // maybe language was a language_code : 'en', 'ko', 'zh-hans', ... 
+                    list.forEach(function(entry){
+
+                        if ((entry.languageId == language)
+                            || (entry.languageName == language)
+                            || (entry.languageName == nameForCode)) {
+                            foundLanguage = entry;
+                        }
+                    })
+
+                    // if we found it, update our languageURL
+                    if (foundLanguage) {
+                       LanguageURL = foundLanguage.languageId;
+                    } else {
+                        self.opts.log('warning: no language in GMA matched given language value:'+langauge);
+                        self.opts.log('ignoring language parameter.')
+                    }
+
+                    next();
+
+                })
+
+            }
+
+        }, 
+
+
+        // step 2:  resolve the Strategy info:
+        function(next) {
+
+            self.getStrategies(nodeID)
+            .fail(function(err){
+                next(err);
+            })
+            .done(function(list){
+
+                // convert this list into a hash:
+                list.forEach(function(entry){
+                    for(var id in entry) {
+                        /* { name : id } */
+                        stratNameHash[entry[id]] = id;
+                    }
+                })
+
+                // if we were given strategies to consider:
+                if (strategies.length > 0) {
+
+                    // for each requested strategy
+                    strategies.forEach(function(strat){
+
+                        var thisStratFound = false; // did I find a match for the current strat?
+
+                        list.forEach(function(entry){
+
+                            for(var id in entry) {
+
+                                // if given strategy value matches either the id or name:
+                                if ((strat == id)
+                                    || (strat == entry[id])) {
+
+                                    // push the id 
+                                    strategyList.push(id);
+                                    thisStratFound = true;  // yay!
+                                }
+                            }
+                        })
+
+                        // post a warning if given strat was not found
+                        if (!thisStratFound) {
+                            AD.log('<yellow>warn:</yellow> strategy entry ['+strat+'] was not found in GMA associated with this node.');
+                        }
+                    })
+
+                } 
+
+                // if we didn't get any matches, then default to all strategies
+                if (strategyList.length == 0) {
+                    self.opts.log('warn: no strategies matched the given set, so ignoring');
+
+                    list.forEach(function(entry) {
+
+                        /*  entry =  { id : 'name' } */
+                        // push the id onto strategyList
+                        for (var id in entry) {
+                            strategyList.push(id);
+                        }
+                    })
+
+                }
+
+                next();
+            })
+        },
+
+
+        // step 3: make sure our measurements make sense
+        // default to all measurements if not given:
+        function(next) {
+
+            self.measurementsForNodeID(nodeID)
+            .fail(function(err){
+                next(err);
+            })
+            .done(function(info){
+
+                var list = info.numericList;
+
+                list.forEach(function(entry) {
+
+                    for(var id in entry) {
+                        /* { name: id } */
+                        measurementNameHash[entry[id]] = id;
+                    }
+                })
+                
+
+                // if we were given measurements to consider:
+                if (measurements.length > 0) {
+
+                    //// verify they match with what is reported from GMA:
+
+                    // for each requested measurement
+                    measurements.forEach(function(measure){
+
+                        var thisMeasureFound = false; // did I find a match for the current strat?
+
+                        list.forEach(function(entry){
+
+                            for(var id in entry) {
+
+                                // if given strategy value matches either the id or name:
+                                if ((measure == id)
+                                    || (measure == entry[id])) {
+
+                                    // push the id 
+                                    measurementList.push(id);
+                                    thisMeasureFound = true;  // yay!
+                                }
+                            }
+                        })
+
+                        // post a warning if given strat was not found
+                        if (!thisMeasureFound) {
+                            AD.log('<yellow>warn:</yellow> measurement entry ['+measure+'] was not found in GMA associated with this node.');
+                        }
+                    })
+
+                } 
+
+//// TODO: figure out if this is required by the web service.
+////       maybe it allows you to not specify any measurements?
+////       the documentation is not clear on this.
+
+                // if we didn't get any matches, then default to all measurements
+                if (measurementList.length == 0) {
+                    self.opts.log('warn: defaulting to all measurements');
+
+                    list.forEach(function(entry) {
+
+                        /*  entry =  { id : 'name' } */
+                        // push the id onto measurementList
+                        for (var id in entry) {
+                            measurementList.push(id);
+                        }
+                    })
+
+                }
+
+                next();
+            });
+
+        },
+
+        
+        // step 4: now put together the serviceOption data structure to 
+        // submit with the service call:
+        function(next){
+
+            serviceOptions = {
+                dateRange: {
+                    fixed: {
+                        from: startDate,
+                        to: endDate
+                    }
+                },
+                reportFormat: { 
+                    byReportingInterval: {
+                        showTotalColumn: false,
+                        granularity: 2 // monthly
+                    }
+                },
+                organizationSelection: [ nodeID ],
+                strategySelection: strategyList,
+                measurementSelection: {
+                    calculatedList: [],
+                    numericList: measurementList
+                }
+            };
+
+            next();
+
+        },
+
+
+        // step 5:  now make the call to our web service!
+        function(next) {
+
+            var url = servicePath.replace('{nodeId}', nodeID);
+            self.opts.log('... calling graph data url ['+url+']');
+            self.gmaRequest({
+                path: url,
+                method: 'POST',
+                data:serviceOptions
+            })
+            .fail(function(res, textStatus, err){
+                next(err);
+            })
+            .done(function(data){
+
+                // the data returned is in base64 encoded string
+                // we load that into a buffer
+                xmlData = new Buffer(data.data, 'base64');
+                next(); 
+            })
+           
+
+        },
+
+
+
+        // step 6: parse the xml data
+        function(next) {
+
+            var XLS = require('xlsx');
+            var workbook = XLS.read(xmlData, {type:"binary"});
+
+
+            finalResults = {
+                nodeId:nodeID,
+            }
+
+            var sheet = workbook.Sheets['generated report'];
+            finalResults.title = sheet['A1'].v;  
+            finalResults.info  = sheet['A4'].v;
+
+            // the data to pull:
+            finalResults.periods = [];
+            finalResults.strategies = [];
+            finalResults.measurements = [];
+
+
+            // 1) pull the periods:
+            //  to do this, we have to figure out how many periods were returned:
+            //  they all exist in the same row, so figure out the beginning col and end cols:
+            colStart = '';
+            periodEnd = '';
+
+            var nextCol = function(curr) {
+                var next = curr.charCodeAt(0);
+                next++;
+                return String.fromCharCode(next);
+            }
+
+            // find the beginning column
+            var col = '@';  // the ascii char before 'A'
+            var dateRow = 5;
+            var cell;
+            while (typeof cell == 'undefined') {
+                col = nextCol(col);
+                cell = sheet[col+dateRow]
+            }
+            colStart = col;
+
+            // now store values and keep track of the last valid value (the end col)
+            while (typeof cell != 'undefined') {
+                finalResults.periods.push( cell.v );
+                colEnd = col;
+                col = nextCol(col);
+                cell = sheet[col+dateRow];
+            }
+
+//// TODO: verify how each Strategy is listed on a form with > 1 strategy
+//// with responses on it.
+
+            // Now parse the Strategy & Measurements:
+            var stratRow = 6; 
+            var currStratID = -1;
+
+            var recursiveRowProcessor = function(row) {
+
+                // if there is no A[row] then there are no more rows to process
+//// NOT SURE THIS IS A VALID ASSUMPTION FOR >1 STRATEGY REPORTS.    
+                if ( typeof sheet['A'+row] == 'undefined' ) {
+
+                    // if there are spaces we need to check to see if we are at the
+                    // end of specified range of information:
+                    //      sheet["!ref"]: "A1:M7"  -->  so if row <= 7 continue on
+
+                } else { 
+
+                    var name = sheet['A'+row].v;
+
+                    // if current row matches a strategy name:
+                    if (typeof stratNameHash[name] != 'undefined') {
+
+                        // update strat entry 
+                        currStratID = stratNameHash[name];
+                        finalResults.strategies.push( { id:currStratID, name:name });
+
+                    } else {
+
+                        // create Measurement entry
+                        var measurement = {};
+
+                        measurement.id = -1;  // how are we going to figure this out?
+                        measurement.name = name;
+
+                        for (var sName in stratNameHash) {
+
+                            var lookup = name+' - '+sName;
+                            if ( measurementNameHash[lookup]) {
+                                measurement.id = measurementNameHash[lookup];
+                            }
+                        }
+
+                        measurement.strategyId = currStratID;
+
+                        measurement.values = [];
+
+                        // parse the line of value info:
+                        var col = colStart;
+                        var cell = sheet[col+row];
+                        while ( typeof cell != 'undefined') {
+                            measurement.values.push(cell.v);
+                            col = nextCol(col);
+                            cell = sheet[col+row];
+                        }
+
+                        finalResults.measurements.push(measurement);
+                    }
+
+                    // do next row
+                    recursiveRowProcessor(row+1);
+                    
+                }
+
+            }
+
+            recursiveRowProcessor(stratRow);  // Not Asynchronous
+
+            next();
+
+        }
+
+
+    ],function(err,results){
+
+        if (err) {
+            dfd.reject(err);
+        } else {
+            dfd.resolve(finalResults);
+        }
+
+    })
+
+    return dfd;
+}
 
 
 
