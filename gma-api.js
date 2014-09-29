@@ -1401,6 +1401,36 @@ GMA.prototype.getReport = function (reportId, role) {
 
 
 /**
+ * @function getMeasurement
+ *
+ * Delivers a Measurement object instance associated with a given reportId
+ * and measurementId.
+ *
+ * Useful when you need to set a measurement's value without first fetching
+ * its report.
+ *
+ * @param int measurementId
+ * @param int reportId
+ * @param string role (Optional)
+ * @return Measurement
+ */
+GMA.prototype.getMeasurement = function (measurementId, reportId, role) {
+    role = role || 'staff';
+    var report = new Measurement({
+        gma: this,
+        role: role,
+        reportId: reportId,
+        measurementId: measurementId
+    });
+    
+    return report;
+}
+
+
+
+
+
+/**
  * @function getReportsForNode
  *
  * Delivers an array of up to ten Report objects for reports within
