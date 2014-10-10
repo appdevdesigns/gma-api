@@ -11,6 +11,7 @@
  *    - AppDev framework
  *    - async
  *    - request
+ *    - xlsx
  */
 
 var GMA = function (opts) {
@@ -71,6 +72,7 @@ if (typeof module != 'undefined' && module.exports) {
     var async = require('async');
     var request = require('request');
     var AD = require('ad-utils');
+    var XLS = require('xlsx');
     GMA.httpRequest = AD.sal.http;
     GMA.Deferred = AD.sal.Deferred;
     GMA.Extend = AD.sal.extend;
@@ -1220,11 +1222,15 @@ GMA.prototype.getGraphData = function (options) {
                 next(err);
             })
             .done(function(data){
-
-                // the data returned is in base64 encoded string
-                // we load that into a buffer
-                xmlData = new Buffer(data.data, 'base64');
-                next(); 
+                if (!data.data) {
+                    next(new Error('GMA has returned no data for the node: ' + nodeID));
+                }
+                else {
+                    // the data returned is in base64 encoded string
+                    // we load that into a buffer
+                    xmlData = new Buffer(data.data, 'base64');
+                    next();
+                }
             })
            
 
@@ -1235,7 +1241,6 @@ GMA.prototype.getGraphData = function (options) {
         // step 6: parse the xml data
         function(next) {
 
-            var XLS = require('xlsx');
             var workbook = XLS.read(xmlData, {type:"binary"});
 
 
