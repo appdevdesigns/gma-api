@@ -1463,7 +1463,7 @@ GMA.prototype.getReportsForNode = function (nodeId, role) {
         method: 'POST',
         data: {
             nodeId: [nodeId],
-            maxResult: 10
+            maxResult: 0 // no limit
         }
     })
     .fail(function(res, textStatus, err){
