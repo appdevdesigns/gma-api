@@ -36,6 +36,7 @@ var GMA = function (opts) {
     // session. Use this as the service URL when requesting a ticket from CAS.
     this.gmaHome = this.opts.gmaBase + '?q=en/node&destination=node';
 
+    this.drupalVersion = null;
     this.isLoggedIn = false;
     this.renId = null;
     this.GUID = null;
@@ -400,12 +401,20 @@ GMA.prototype.loginWithTicket = function (ticket) {
             }
 
             GMA.httpRequest(reqParams)
-            .done(function(data, textStatus, res){
+            .done(function(data, textStatus, xhr){
                 if (data.match(/CAS Authentication failed/)) {
                     // Authentication problem on the Drupal site
                     next(new Error("Sorry, there was a problem authenticating with the server"));
                 } else {
-                    // The session cookie has now been set
+                    // The session cookie has now been set.
+
+                    // Find out what version of Drupal this is.
+                    var generator = xhr.getResponseHeader('X-Generator');
+                    if (generator && generator.match(/Drupal 7/i)) {
+                        self.drupalVersion = 7;
+                    } else {
+                        self.drupalVersion = 6;
+                    }
                     next();
                 }
             })
@@ -1531,8 +1540,13 @@ GMA.prototype.logout = function () {
     var dfd = GMA.Deferred();
     var self = this;
 
+    var logoutPath = '?q=logout';
+    if (self.drupalVersion >= 7) {
+        logoutPath = '?q=user/logout';
+    }
+
     self.gmaRequest({
-        path: '?q=logout',
+        path: logoutPath,
         method: 'HEAD',
         dataType: 'html'
     })
