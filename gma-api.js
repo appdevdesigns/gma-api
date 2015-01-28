@@ -28,7 +28,7 @@ var GMA = function (opts) {
         // Optional value for an "X-Forwarded-For" http request header
         forwardedFor: false,
         // Optional function for logging warnings and errors
-        log: console.log
+        log: function(a,b,c,d) { console.log(a,b,c,d); }
     };
     this.opts = GMA.Extend(defaults, opts);
     
